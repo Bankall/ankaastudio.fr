@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# Client galleries and the admin area are private. They are also noindex via a
+# meta tag, but keeping crawlers out of them saves pointless CloudFront requests.
+Disallow: /admin
+Disallow: /g/
+
+Sitemap: https://ankaastudio.fr/sitemap.xml

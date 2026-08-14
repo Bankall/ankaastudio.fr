@@ -1,0 +1,14 @@
+{
+	"name": "ankaa-gallery-api",
+	"private": true,
+	"version": "1.0.0",
+	"type": "module",
+	"description": "Ankaa Studio gallery API — admin CRUD, client access, CloudFront signing.",
+	"dependencies": {
+		"@aws-sdk/client-lambda": "^3.913.0",
+		"@aws-sdk/client-s3": "^3.913.0",
+		"@aws-sdk/client-sesv2": "^3.913.0",
+		"@aws-sdk/client-ssm": "^3.913.0",
+		"@aws-sdk/s3-presigned-post": "^3.913.0"
+	}
+}

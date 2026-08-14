@@ -1,0 +1,14 @@
+{
+	"name": "contact-mailer",
+	"version": "1.0.0",
+	"description": "Lambda that receives the Ankaa Studio contact form and sends an email via SES.",
+	"type": "module",
+	"main": "index.mjs",
+	"scripts": {
+		"deploy": "./deploy.sh deploy",
+		"update": "./deploy.sh update"
+	},
+	"dependencies": {
+		"@aws-sdk/client-sesv2": "^3.716.0"
+	}
+}

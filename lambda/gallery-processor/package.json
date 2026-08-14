@@ -1,0 +1,12 @@
+{
+	"name": "ankaa-gallery-processor",
+	"private": true,
+	"version": "1.0.0",
+	"type": "module",
+	"description": "Derives watermarked previews, an HD JPEG and an LQIP from an uploaded original.",
+	"dependencies": {
+		"@aws-sdk/client-s3": "^3.913.0",
+		"exif-reader": "^2.0.2",
+		"sharp": "^0.35.3"
+	}
+}

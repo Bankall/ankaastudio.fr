@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="fr">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Ankaa Studio</title>
+		<script>
+			const currentPath = window.location.pathname + window.location.search + window.location.hash
+			if (currentPath !== '/404.html') {
+			  window.location.replace('/?route=' + encodeURIComponent(currentPath))
+			}
+		</script>
+	</head>
+	<body>
+		<p>Chargement...</p>
+	</body>
+</html>

@@ -1,0 +1,131 @@
+name: Deploy site and gallery stack
+
+on:
+    push:
+        branches:
+            - main
+    workflow_dispatch:
+        inputs:
+            deploy_stack:
+                description: Also deploy the CloudFormation stack (Lambdas, CloudFront, buckets)
+                type: boolean
+                default: false
+
+jobs:
+    site:
+        name: Build and publish the site
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Lint
+              run: npm run lint
+
+            - name: Build
+              run: npm run build
+
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                  aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+                  aws-region: ${{ secrets.AWS_REGION }}
+
+            - name: Upload static assets
+              run: |
+                  aws s3 sync dist s3://${{ secrets.S3_BUCKET_NAME }} \
+                    --delete \
+                    --exclude "*.html" \
+                    --exclude "robots.txt" \
+                    --exclude "sitemap.xml" \
+                    --cache-control "public,max-age=31536000,immutable"
+
+            - name: Upload entry files
+              run: |
+                  aws s3 cp dist/index.html s3://${{ secrets.S3_BUCKET_NAME }}/index.html \
+                    --cache-control "public,max-age=0,must-revalidate" \
+                    --content-type "text/html"
+                  aws s3 cp dist/404.html s3://${{ secrets.S3_BUCKET_NAME }}/404.html \
+                    --cache-control "public,max-age=0,must-revalidate" \
+                    --content-type "text/html"
+                  aws s3 cp dist/robots.txt s3://${{ secrets.S3_BUCKET_NAME }}/robots.txt \
+                    --cache-control "public,max-age=86400" \
+                    --content-type "text/plain"
+                  aws s3 cp dist/sitemap.xml s3://${{ secrets.S3_BUCKET_NAME }}/sitemap.xml \
+                    --cache-control "public,max-age=86400" \
+                    --content-type "application/xml"
+
+            # Scoped to the entry documents. A wildcard invalidation would also evict
+            # every cached photo — a needless bill and a slow gallery afterwards.
+            # Hashed asset filenames never need invalidating.
+            - name: Invalidate CloudFront entry documents
+              if: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID != '' }}
+              run: |
+                  aws cloudfront create-invalidation \
+                    --distribution-id "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" \
+                    --paths "/index.html" "/404.html" "/robots.txt" "/sitemap.xml"
+
+    stack:
+        name: Deploy the gallery stack
+        runs-on: ubuntu-latest
+        # Infrastructure changes are rare and touch CloudFront, so they are opt-in
+        # rather than riding along with every content push.
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_stack }}
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Bundle the Lambdas
+              run: ./infra/build.sh all
+
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v4
+              with:
+                  aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                  aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+                  aws-region: ${{ secrets.AWS_REGION }}
+
+            - name: Package the template
+              run: |
+                  aws cloudformation package \
+                    --template-file infra/template.yaml \
+                    --s3-bucket "${{ secrets.ARTIFACTS_BUCKET }}" \
+                    --s3-prefix gallery \
+                    --output-template-file packaged.yaml
+
+            - name: Deploy the stack
+              run: |
+                  aws cloudformation deploy \
+                    --template-file packaged.yaml \
+                    --stack-name "${{ secrets.STACK_NAME }}" \
+                    --capabilities CAPABILITY_IAM \
+                    --no-fail-on-empty-changeset \
+                    --parameter-overrides \
+                      SiteBucketName="${{ secrets.S3_BUCKET_NAME }}" \
+                      MediaBucketName="${{ secrets.MEDIA_BUCKET }}" \
+                      DomainName="${{ secrets.DOMAIN_NAME }}" \
+                      CertificateArn="${{ secrets.CERTIFICATE_ARN }}" \
+                      KeyGroupId="${{ secrets.KEY_GROUP_ID }}" \
+                      CloudFrontKeyPairId="${{ secrets.CF_KEY_PAIR_ID }}" \
+                      SenderEmail="${{ secrets.SENDER_EMAIL }}"
