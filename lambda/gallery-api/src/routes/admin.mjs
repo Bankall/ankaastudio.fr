@@ -4,7 +4,7 @@ import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { SendEmailCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 
-import { clearAdminSession, issueAdminSession, penalise, requireAdmin } from "../lib/auth.mjs";
+import { clearAdminSession, issueAdminSession, issueSignedCookies, penalise, requireAdmin } from "../lib/auth.mjs";
 import { badRequest, conflict, json, noContent, notFound, publicOrigin } from "../lib/http.mjs";
 import { galleryId, photoId, SLUG_PATTERN, slugify } from "../lib/ids.mjs";
 import { hashPassword, verifyPassword } from "../lib/passwords.mjs";
@@ -22,6 +22,7 @@ import {
 	newGallery,
 	originalKey,
 	originalPrefix,
+	pendingPhoto,
 	selectionKey,
 	sidecarKey,
 	sidecarPrefix,
@@ -40,6 +41,12 @@ const ses = new SESv2Client({});
 // mis-picked video file is rejected before it costs any transfer.
 const MAX_UPLOAD_BYTES = 120 * 1024 * 1024;
 const UPLOAD_URL_TTL_SECONDS = 15 * 60;
+
+// How long a photo may sit marked "processing" before reconcile treats it as
+// lost and queues it again. The processor's own timeout is 60 s, so anything
+// past this is not slow — but a throttled invocation can wait in the async queue
+// for minutes before it starts, and re-queueing one of those wastes a derive.
+const STALE_PROCESSING_MS = 5 * 60 * 1000;
 const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "tif", "tiff", "heic", "heif"]);
 
 // --- helpers ---------------------------------------------------------------
@@ -182,8 +189,14 @@ async function createGallery({ request }) {
 async function readGallery({ request, params }) {
 	await requireAdmin(request);
 	const { data } = await loadGallery(params.gid);
+	const origin = publicOrigin(request);
 
-	return json(200, { gallery: adminProjection(data, publicOrigin(request)) });
+	// The admin grid renders the same previews from the same protected v/ prefix
+	// the client sees, so it needs the same signed cookies — an admin session is
+	// not one. Without this every tile 403s, except in the one case that hides
+	// the bug: having opened the gallery's own client page in another tab, which
+	// sets cookies for this exact path and only works once published.
+	return json(200, { gallery: adminProjection(data, origin) }, { cookies: await issueSignedCookies(params.gid, origin) });
 }
 
 async function updateGallery({ request, params }) {
@@ -350,29 +363,44 @@ async function createUploads({ request, params }) {
  * pass the gallery's watermark mode straight through. If a tab dies mid-batch,
  * `reconcile` finds and re-queues whatever never got processed.
  */
+/**
+ * Records the uploaded photos as pending, then queues a processor for each.
+ *
+ * Writing them to the record first is what makes the grid live: a tile appears
+ * immediately and the editor polls until it turns into an image, instead of the
+ * batch staying invisible until someone presses Actualiser. It also stops
+ * reconcile from mistaking a photo that is merely still in flight for one whose
+ * processor never came back — which had it queueing every photo a second time.
+ */
 async function processPhotos({ request, params }) {
 	await requireAdmin(request);
-	const { data: gallery } = await loadGallery(params.gid);
 
 	const items = request.body?.photos;
 	if (!Array.isArray(items) || items.length === 0) {
 		throw badRequest("Aucune photo à traiter.");
 	}
 
-	await Promise.all(
-		items.map(item =>
-			invokeProcessor({
-				gid: gallery.id,
-				pid: str(item?.pid, "pid", { required: true, max: 40 }),
-				extension: str(item?.extension, "extension", { required: true, max: 8 }),
-				originalName: str(item?.originalName, "nom de fichier", { max: 255 }) ?? "",
-				watermark: gallery.watermark,
-				rev: 1
-			})
-		)
-	);
+	const queued = items.map(item => ({
+		pid: str(item?.pid, "pid", { required: true, max: 40 }),
+		extension: str(item?.extension, "extension", { required: true, max: 8 }),
+		originalName: str(item?.originalName, "nom de fichier", { max: 255 }) ?? ""
+	}));
 
-	return json(202, { queued: items.length });
+	const { data: gallery, etag } = await loadGallery(params.gid);
+	const known = new Set(gallery.photos.map(photo => photo.pid));
+
+	for (const item of queued) {
+		// A retried batch must not double the row it already added.
+		if (!known.has(item.pid)) {
+			gallery.photos.push(pendingPhoto(item, gallery.photos.length));
+		}
+	}
+
+	await saveGallery(gallery, etag);
+
+	await Promise.all(queued.map(item => invokeProcessor({ gid: gallery.id, ...item, watermark: gallery.watermark, rev: 1 })));
+
+	return json(202, { queued: queued.length });
 }
 
 /** Progress for the uploader: which sidecars exist yet, and how they landed. */
@@ -402,12 +430,30 @@ async function reconcile({ request, params }) {
 
 	const sidecarKeys = await listKeys(sidecarPrefix(gallery.id));
 	const sidecars = (await mapWithLimit(sidecarKeys, 10, item => getJson(item.key))).filter(Boolean).map(entry => entry.data);
+	const arrived = new Set(sidecars.map(sidecar => sidecar.pid));
+
+	const originals = (await listKeys(originalPrefix(gallery.id)))
+		.map(item => {
+			const filename = item.key.slice(item.key.lastIndexOf("/") + 1);
+			const dot = filename.lastIndexOf(".");
+
+			return { pid: filename.slice(0, dot), extension: filename.slice(dot + 1) };
+		})
+		.filter(item => item.pid);
 
 	// Editorial fields live on the record, not the sidecar, so they must survive.
 	const existing = new Map(gallery.photos.map(photo => [photo.pid, photo]));
 
 	const merged = sidecars.map(sidecar => {
 		const previous = existing.get(sidecar.pid);
+
+		// A reprocess bumps the record's rev and deletes the old derivatives before
+		// the new sidecar exists. Folding that older sidecar back in would point the
+		// gallery at files that are already gone, so the record wins until the
+		// processor catches up.
+		if (previous && previous.rev > sidecar.rev) {
+			return previous;
+		}
 
 		return {
 			...sidecar,
@@ -416,14 +462,56 @@ async function reconcile({ request, params }) {
 		};
 	});
 
+	// Photos queued but not yet derived stay in the record. Rebuilding purely from
+	// sidecars would make a batch disappear from the grid until the last one
+	// landed, which is the opposite of what a progress view is for.
+	const awaiting = gallery.photos.filter(photo => photo.status === "processing" && !arrived.has(photo.pid));
+	const all = [...merged, ...awaiting];
+
 	// Anything without an explicit position goes to the end, ordered the way a
 	// photographer's export numbering reads.
-	const positioned = merged.filter(photo => photo.sortIndex !== null).sort((a, b) => a.sortIndex - b.sortIndex);
-	const fresh = merged
+	const positioned = all.filter(photo => photo.sortIndex !== null).sort((a, b) => a.sortIndex - b.sortIndex);
+	const fresh = all
 		.filter(photo => photo.sortIndex === null)
 		.sort((a, b) => String(a.originalName).localeCompare(String(b.originalName), "fr", { numeric: true }));
 
 	gallery.photos = [...positioned, ...fresh].map((photo, index) => ({ ...photo, sortIndex: index }));
+
+	// An original with no sidecar is either still being derived or genuinely lost,
+	// and the two need opposite treatment: re-queueing the first is what had every
+	// photo derived twice over, while leaving the second strands a permanent
+	// "traitement…" tile. Only the age of the record entry tells them apart.
+	const cutoff = Date.now() - STALE_PROCESSING_MS;
+	const inRecord = new Map(gallery.photos.map(photo => [photo.pid, photo]));
+	const requeue = [];
+
+	for (const item of originals) {
+		const photo = inRecord.get(item.pid);
+
+		if (photo && photo.status !== "processing") {
+			continue;
+		}
+
+		if (!photo) {
+			// Uploaded but never queued — the tab closed between the two calls. The
+			// original filename is only known to the browser that uploaded it, so it
+			// is lost here; the processor falls back to the pid.
+			gallery.photos.push(pendingPhoto(item, gallery.photos.length));
+			requeue.push({ ...item, originalName: "", rev: 1 });
+			continue;
+		}
+
+		const queuedAt = Date.parse(photo.queuedAt ?? "");
+
+		if (Number.isFinite(queuedAt) && queuedAt >= cutoff) {
+			continue;
+		}
+
+		// Stamping it again is what keeps this idempotent: the editor polls every
+		// few seconds, and without it every poll would queue the photo once more.
+		photo.queuedAt = new Date().toISOString();
+		requeue.push({ pid: photo.pid, extension: photo.extension ?? item.extension, originalName: photo.originalName ?? "", rev: photo.rev ?? 1 });
+	}
 
 	if (gallery.coverPid && !gallery.photos.some(photo => photo.pid === gallery.coverPid)) {
 		gallery.coverPid = null;
@@ -431,24 +519,17 @@ async function reconcile({ request, params }) {
 
 	await saveGallery(gallery, etag);
 
-	// Re-queue originals that never produced a sidecar (closed tab, throttled
-	// processor, transient failure).
-	const known = new Set(gallery.photos.map(photo => photo.pid));
-	const orphans = (await listKeys(originalPrefix(gallery.id)))
-		.map(item => {
-			const filename = item.key.slice(item.key.lastIndexOf("/") + 1);
-			const dot = filename.lastIndexOf(".");
+	await Promise.all(requeue.map(item => invokeProcessor({ gid: gallery.id, ...item, watermark: gallery.watermark })));
 
-			return { pid: filename.slice(0, dot), extension: filename.slice(dot + 1) };
-		})
-		.filter(item => item.pid && !known.has(item.pid));
+	const origin = publicOrigin(request);
 
-	await Promise.all(orphans.map(item => invokeProcessor({ gid: gallery.id, ...item, watermark: gallery.watermark, rev: 1 })));
-
-	return json(200, {
-		gallery: adminProjection(gallery, publicOrigin(request)),
-		requeued: orphans.length
-	});
+	// Refreshed on every poll, so a long editing session never watches its own
+	// tiles turn into 403s when the 12-hour cookies lapse.
+	return json(
+		200,
+		{ gallery: adminProjection(gallery, origin), requeued: requeue.length },
+		{ cookies: await issueSignedCookies(gallery.id, origin) }
+	);
 }
 
 // --- photo edits -----------------------------------------------------------
@@ -528,6 +609,9 @@ async function reprocess({ request, params }) {
 		stale.push(thumbKey(gallery.id, photo.pid, photo.rev), webKey(gallery.id, photo.pid, photo.rev), hdKey(gallery.id, photo.pid, photo.rev));
 		photo.rev += 1;
 		photo.status = "processing";
+		// Dates the new attempt, so a reconcile that lands while these are in flight
+		// does not read them as abandoned and queue every one of them twice.
+		photo.queuedAt = new Date().toISOString();
 	}
 
 	await saveGallery(gallery, etag);

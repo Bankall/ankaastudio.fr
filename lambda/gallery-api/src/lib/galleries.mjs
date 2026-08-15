@@ -56,6 +56,27 @@ export function newGallery({ id, slug, title, clientName = "", clientEmail = "",
 	};
 }
 
+/**
+ * The record entry for a photo that has been uploaded but not yet derived.
+ *
+ * The record has to know about a photo before its sidecar exists, or the admin
+ * grid has nothing to show a "traitement…" tile for and no reason to keep
+ * polling. `queuedAt` is what lets reconcile tell a photo that is still being
+ * processed from one whose processor never came back.
+ */
+export function pendingPhoto({ pid, extension, originalName = "" }, sortIndex, rev = 1) {
+	return {
+		pid,
+		rev,
+		extension,
+		originalName,
+		status: "processing",
+		queuedAt: new Date().toISOString(),
+		caption: null,
+		sortIndex
+	};
+}
+
 export function isExpired(gallery, now = Date.now()) {
 	return Boolean(gallery.expiresAt) && Date.parse(gallery.expiresAt) < now;
 }
