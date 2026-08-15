@@ -452,7 +452,7 @@ button {
 
 .hero,
 .page-hero {
-	background: url("src/assets/media/hero-background.min.jpg") center/cover no-repeat;
+	background: url("../media/hero-background.min.jpg") center/cover no-repeat;
 
 	.container {
 		width: 100%;
