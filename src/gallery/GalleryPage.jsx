@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import { Seo } from "../components/Seo.jsx";
 import { ApiError, galleryApi } from "../utils/galleryApi.js";
 import { DownloadPanel } from "./DownloadPanel.jsx";
+import { readDownloadEmail, storeDownloadEmail } from "./downloadEmail.js";
+import { EmailPrompt } from "./EmailPrompt.jsx";
 import { GalleryCover } from "./GalleryCover.jsx";
 import { Lightbox } from "./Lightbox.jsx";
 import { PasswordGate } from "./PasswordGate.jsx";
@@ -46,6 +48,8 @@ export function GalleryPage() {
 	const [state, setState] = useState({ status: "loading", slug });
 	const [selection, setSelection] = useState([]);
 	const [lightboxIndex, setLightboxIndex] = useState(null);
+	// The photo waiting on an email address before it downloads.
+	const [pendingPid, setPendingPid] = useState(null);
 	const saveTimerRef = useRef(null);
 
 	const applyManifest = useCallback(
@@ -176,8 +180,18 @@ export function GalleryPage() {
 	// still better than a gallery with no way to keep a photo at all.
 	const hd = Boolean(state.gallery?.downloads?.hd);
 
-	const downloadPhoto = useCallback(
-		pid => {
+	/**
+	 * Hands the photo over, having told the photographer who is taking it.
+	 *
+	 * The notification is awaited rather than fired and forgotten: setting
+	 * `location` on the HD path can cancel a request still in flight, and a
+	 * download that silently stops being reported is worse than one that starts a
+	 * fraction of a second later. A failed notification never blocks the file.
+	 */
+	const performDownload = useCallback(
+		async (pid, address) => {
+			await galleryApi.logDownload(slug, pid, address).catch(() => {});
+
 			if (hd) {
 				// The API answers 302 to a short-lived signed URL, and the object carries
 				// Content-Disposition: attachment, so this downloads without navigating.
@@ -198,6 +212,30 @@ export function GalleryPage() {
 		},
 		[hd, photos, slug]
 	);
+
+	// Asked once per browser: a prompt in front of every tile would be intolerable,
+	// and the address is only there to name the download.
+	const downloadPhoto = useCallback(
+		pid => {
+			const known = readDownloadEmail();
+
+			if (known) {
+				performDownload(pid, known);
+
+				return;
+			}
+
+			setPendingPid(pid);
+		},
+		[performDownload]
+	);
+
+	const confirmPhotoEmail = address => {
+		const pid = pendingPid;
+		setPendingPid(null);
+		storeDownloadEmail(address);
+		performDownload(pid, address);
+	};
 
 	const navigate = useCallback(
 		step => {
@@ -309,6 +347,16 @@ export function GalleryPage() {
 					onNavigate={navigate}
 					onToggleFavourite={toggleFavourite}
 					onDownload={downloadPhoto}
+				/>
+			:	null}
+
+			{pendingPid ?
+				<EmailPrompt
+					title='Avant de télécharger'
+					message='Indiquez votre email pour télécharger cette photo. Le téléchargement démarre aussitôt.'
+					submitLabel='Télécharger'
+					onSubmit={confirmPhotoEmail}
+					onCancel={() => setPendingPid(null)}
 				/>
 			:	null}
 		</div>

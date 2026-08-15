@@ -72,8 +72,21 @@ document for them to race on.
 
 **Content-addressed derivatives:** keys carry `_<rev>`, so everything under
 `media/` is served `immutable` for a year and re-processing never needs an
-invalidation. ZIPs are keyed by `sha1` of the exact photo revisions requested, so
-asking twice costs one build.
+invalidation. ZIPs are keyed by `sha1` of the exact photo revisions requested —
+plus a `web:` prefix when the gallery has HD downloads switched off, since the
+archive is then built from the watermarked previews and is a different file — so
+asking twice costs one build, and flipping the HD switch can never serve the
+wrong quality from cache.
+
+**The API sends the archive email, not the zipper.** A client asking for an
+archive gives an email address (never verified — it is there to name the download
+in the photographer's feed) and the API mails them `/archive/<jid>` *before* the
+build starts: the zipper has neither a sender identity nor the CloudFront signing
+key, and a signed URL lives five minutes, which is useless in an inbox. That page
+polls `GET /api/archives/<jid>`, which sits outside the password gate — the mail is
+opened on devices that never saw the gallery, so the 95-bit job id is the
+credential. It still honours the gallery's own switches, so turning downloads off
+retracts every link ever sent, and the job document expires after 7 days.
 
 ---
 
@@ -223,6 +236,7 @@ db/galleries/<gid>/photos/<pid>.json processor sidecars
 db/selections/<gid>.json             client favourites
 db/jobs/<jid>.json                   ZIP job progress (expires at 7 days)
 db/zips/<gid>/<hash>.json            built-archive marker (parts list)
+db/downloads.json                    download notifications, capped at 300
 originals/<gid>/<pid>.<ext>          untouched uploads → GLACIER_IR at 60 days
 media/g/<gid>/v/t|w/<pid>_<rev>.webp previews (signed cookies)
 media/g/<gid>/v/c/<pid>_<rev>.webp   unmarked cover, one per gallery

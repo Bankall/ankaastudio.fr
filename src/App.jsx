@@ -13,6 +13,7 @@ import { PricingPage } from "./pages/PricingPage.jsx";
 // Client galleries and the admin area are lazy: neither is ever visited by a
 // marketing-site visitor, and they should not weigh on the landing page bundle.
 const GalleryPage = lazy(() => import("./gallery/GalleryPage.jsx").then(module => ({ default: module.GalleryPage })));
+const ArchivePage = lazy(() => import("./gallery/ArchivePage.jsx").then(module => ({ default: module.ArchivePage })));
 const AdminApp = lazy(() => import("./admin/AdminApp.jsx").then(module => ({ default: module.AdminApp })));
 
 function ChunkFallback() {
@@ -67,6 +68,9 @@ function App() {
 					<Route path='/gallery/:slug' element={<GalleryPage />} />
 					{/* Links to the old /g/:slug form are already in client inboxes. */}
 					<Route path='/g/:slug' element={<LegacyGalleryRedirect />} />
+					{/* The archive link mailed to a client. Carries its own credential, so
+					    it sits outside the password gate as well as outside Layout. */}
+					<Route path='/archive/:token' element={<ArchivePage />} />
 					<Route path='/admin/*' element={<AdminApp />} />
 
 					<Route element={<Layout />}>

@@ -1,11 +1,12 @@
 // Admin routes: authentication, gallery CRUD, uploads, processing and sharing.
 
-import { SendEmailCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 
 import { clearAdminSession, issueAdminSession, issueSignedCookies, penalise, requireAdmin } from "../lib/auth.mjs";
+import { markDownloadsSeen, readDownloadLog } from "../lib/downloads.mjs";
 import { badRequest, conflict, json, noContent, notFound, publicOrigin } from "../lib/http.mjs";
 import { galleryId, photoId, SLUG_PATTERN, slugify } from "../lib/ids.mjs";
+import { emailButton, emailLayout, emailNote, emailParagraph, emailQuote, emailValue, escapeHtml, sendEmail } from "../lib/mailer.mjs";
 import { hashPassword, verifyPassword } from "../lib/passwords.mjs";
 import { invokeProcessor } from "../lib/processor.mjs";
 import { getSecrets } from "../lib/secrets.mjs";
@@ -35,8 +36,6 @@ import {
 	zipMarkerPrefix,
 	zipPrefix
 } from "../lib/galleries.mjs";
-
-const ses = new SESv2Client({});
 
 // Big enough for an uncompressed TIFF straight off a body; small enough that a
 // mis-picked video file is rejected before it costs any transfer.
@@ -692,38 +691,52 @@ async function share({ request, params }) {
 		"Ankaa Studio"
 	];
 
-	const escapeHtml = value => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-
-	const html = `
-		<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;line-height:1.6;">
-			<h2 style="margin:0 0 16px;">Votre galerie est en ligne</h2>
-			<p>Bonjour ${escapeHtml(gallery.clientName || "")},</p>
-			<p>Votre galerie <strong>${escapeHtml(gallery.title)}</strong> est prête.</p>
-			<p><a href="${escapeHtml(link)}" style="display:inline-block;padding:12px 20px;background:#1a1a1a;color:#fff;text-decoration:none;border-radius:8px;">Voir la galerie</a></p>
-			${password ? `<p>Mot de passe : <strong>${escapeHtml(password)}</strong></p>` : ""}
-			${note ? `<p style="white-space:pre-wrap;">${escapeHtml(note)}</p>` : ""}
-			${gallery.expiresAt ? `<p style="color:#666;font-size:14px;">Accessible jusqu'au ${escapeHtml(new Date(gallery.expiresAt).toLocaleDateString("fr-FR"))}.</p>` : ""}
-			<p>À très bientôt,<br>Ankaa Studio</p>
-		</div>
-	`;
-
-	await ses.send(
-		new SendEmailCommand({
-			FromEmailAddress: process.env.SENDER_EMAIL,
-			Destination: { ToAddresses: [recipient] },
-			Content: {
-				Simple: {
-					Subject: { Data: `Votre galerie « ${gallery.title} » est en ligne`, Charset: "UTF-8" },
-					Body: {
-						Text: { Data: lines.join("\n"), Charset: "UTF-8" },
-						Html: { Data: html, Charset: "UTF-8" }
-					}
-				}
-			}
+	await sendEmail({
+		to: recipient,
+		subject: `Votre galerie « ${gallery.title} » est en ligne`,
+		text: lines.join("\n"),
+		html: emailLayout({
+			label: "Galerie en ligne",
+			heading: "Votre galerie est en ligne",
+			preview: `Vos photos vous attendent dans la galerie « ${gallery.title} ».`,
+			origin,
+			inner: [
+				emailParagraph(`Bonjour ${escapeHtml(gallery.clientName || "")},`),
+				emailParagraph(`Vos photos vous attendent dans la galerie <strong>${escapeHtml(gallery.title)}</strong>.`),
+				note ? emailQuote(note) : "",
+				password ? emailValue("Mot de passe", password) : "",
+				emailButton(link, "Voir la galerie"),
+				gallery.expiresAt ? emailNote(`Galerie accessible jusqu'au ${escapeHtml(new Date(gallery.expiresAt).toLocaleDateString("fr-FR"))}.`) : ""
+			].join("")
 		})
-	);
+	});
 
 	return json(200, { ok: true, sentTo: recipient });
+}
+
+// --- download notifications ------------------------------------------------
+
+/**
+ * The photographer's feed: who downloaded what, newest first.
+ *
+ * `seenAt` is the read marker the badge counts against, kept server-side so the
+ * count is the same on a laptop and on a phone.
+ */
+async function listDownloads({ request }) {
+	await requireAdmin(request);
+	const log = await readDownloadLog();
+	const gid = request.query.get("gid");
+
+	return json(200, {
+		events: gid ? (log.events ?? []).filter(event => event.gid === gid) : (log.events ?? []),
+		seenAt: log.seenAt ?? null
+	});
+}
+
+async function seenDownloads({ request }) {
+	await requireAdmin(request);
+
+	return json(200, { seenAt: await markDownloadsSeen() });
 }
 
 /** What the client marked as favourite. */
@@ -759,5 +772,7 @@ export const adminRoutes = [
 	["DELETE", "/api/admin/galleries/:gid/photos/:pid", deletePhoto],
 	["POST", "/api/admin/galleries/:gid/reprocess", reprocess],
 	["POST", "/api/admin/galleries/:gid/share", share],
-	["GET", "/api/admin/galleries/:gid/selection", readSelection]
+	["GET", "/api/admin/galleries/:gid/selection", readSelection],
+	["GET", "/api/admin/downloads", listDownloads],
+	["POST", "/api/admin/downloads/seen", seenDownloads]
 ];

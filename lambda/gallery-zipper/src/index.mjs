@@ -32,9 +32,21 @@ const PREFETCH = 3;
 const PROGRESS_INTERVAL_MS = 2000;
 
 const jobKey = jid => `db/jobs/${jid}.json`;
-const hdKey = (gid, pid, rev) => `media/g/${gid}/d/hd/${pid}_${rev}.jpg`;
 const zipKey = (gid, hash, suffix) => `media/g/${gid}/d/zip/${hash}${suffix}.zip`;
 const markerKey = (gid, hash) => `db/zips/${gid}/${hash}.json`;
+
+/**
+ * Which derivative the archive is built from.
+ *
+ * A gallery with HD downloads switched off still allows archives — the client
+ * just gets the same web-sized preview the tiles hand over, watermark included.
+ * The API decides and says so in the payload; anything unrecognised (or a job
+ * queued before this existed) falls back to HD, which is what every archive was.
+ */
+const SOURCES = {
+	hd: { key: (gid, pid, rev) => `media/g/${gid}/d/hd/${pid}_${rev}.jpg`, extension: "jpg" },
+	web: { key: (gid, pid, rev) => `media/g/${gid}/v/w/${pid}_${rev}.webp`, extension: "webp" }
+};
 
 async function putJson(key, data, extra = {}) {
 	await s3.send(
@@ -87,7 +99,7 @@ function partition(photos, maxBytes) {
 }
 
 /** Distinct, ordered, filesystem-safe entry names inside the archive. */
-function entryNames(photos) {
+function entryNames(photos, extension) {
 	const used = new Set();
 
 	return photos.map((photo, index) => {
@@ -97,12 +109,12 @@ function entryNames(photos) {
 			.replace(/^-+|-+$/g, "")
 			.slice(0, 80);
 
-		let name = `${String(index + 1).padStart(3, "0")}-${stem || photo.pid}.jpg`;
+		let name = `${String(index + 1).padStart(3, "0")}-${stem || photo.pid}.${extension}`;
 
 		// Two exports can share a stem; a ZIP with duplicate names unpacks badly.
 		let suffix = 2;
 		while (used.has(name.toLowerCase())) {
-			name = `${String(index + 1).padStart(3, "0")}-${stem || photo.pid}-${suffix}.jpg`;
+			name = `${String(index + 1).padStart(3, "0")}-${stem || photo.pid}-${suffix}.${extension}`;
 			suffix += 1;
 		}
 
@@ -137,9 +149,9 @@ function appendEntry(archive, body, name) {
 	});
 }
 
-async function buildPart({ gid, photos, key, filename, onProgress }) {
+async function buildPart({ gid, photos, key, filename, source, onProgress }) {
 	const archive = archiver("zip", { store: true });
-	const names = entryNames(photos);
+	const names = entryNames(photos, source.extension);
 
 	archive.on("warning", warning => console.warn("Archive warning", { code: warning.code, message: warning.message }));
 
@@ -185,7 +197,7 @@ async function buildPart({ gid, photos, key, filename, onProgress }) {
 			const photo = photos[index];
 			pending.set(
 				index,
-				s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: hdKey(gid, photo.pid, photo.rev) }))
+				s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: source.key(gid, photo.pid, photo.rev) }))
 			);
 		};
 
@@ -221,11 +233,13 @@ async function buildPart({ gid, photos, key, filename, onProgress }) {
 }
 
 export const handler = async event => {
-	const { jobId, gid, slug, hash, photos } = event ?? {};
+	const { jobId, gid, slug, hash, photos, variant } = event ?? {};
 
 	if (!jobId || !gid || !hash || !Array.isArray(photos) || photos.length === 0) {
 		throw new Error("Payload must include jobId, gid, hash and a non-empty photos array.");
 	}
+
+	const source = SOURCES[variant] ?? SOURCES.hd;
 
 	let job;
 	try {
@@ -269,6 +283,7 @@ export const handler = async event => {
 					photos: group,
 					key: zipKey(gid, hash, suffix),
 					filename,
+					source,
 					onProgress: publishProgress
 				})
 			);
@@ -294,7 +309,7 @@ export const handler = async event => {
 			updatedAt: new Date().toISOString()
 		});
 
-		console.info("Zip complete", { jobId, gid, parts: parts.length, photos: photos.length });
+		console.info("Zip complete", { jobId, gid, variant: source.extension, parts: parts.length, photos: photos.length });
 
 		return { ok: true, parts };
 	} catch (error) {

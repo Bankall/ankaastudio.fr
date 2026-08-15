@@ -17,7 +17,10 @@ export function shortId(length = 10) {
 
 export const galleryId = () => `g_${shortId(10)}`;
 export const photoId = () => `p_${shortId(12)}`;
-export const jobId = () => `j_${shortId(12)}`;
+// Longer than the others because it is a bearer token: the archive link mailed
+// to a client carries nothing else, so guessing one must be hopeless (~95 bits).
+export const jobId = () => `j_${shortId(20)}`;
+export const eventId = () => `d_${shortId(10)}`;
 
 // Slugs land in URLs and in the SPA fallback rule, which folds any path whose
 // last segment has no dot onto index.html — so dots must not survive here.
@@ -35,4 +38,4 @@ export function slugify(input) {
 }
 
 export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/;
-export const ID_PATTERN = /^[gpj]_[0-9bcdfghjkmnpqrstvwxz]{6,16}$/;
+export const ID_PATTERN = /^[gpjd]_[0-9bcdfghjkmnpqrstvwxz]{6,24}$/;

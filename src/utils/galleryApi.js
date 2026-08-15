@@ -88,8 +88,14 @@ export const galleryApi = {
 	refresh: slug => request(`/api/g/${encodeURIComponent(slug)}/refresh`, { method: "POST" }),
 	readSelection: slug => request(`/api/g/${encodeURIComponent(slug)}/selection`),
 	saveSelection: (slug, pids) => request(`/api/g/${encodeURIComponent(slug)}/selection`, { method: "PUT", body: { pids } }),
-	requestZip: (slug, pids) => request(`/api/g/${encodeURIComponent(slug)}/zip`, { method: "POST", body: { pids } }),
+	// The email is what the archive link is sent to, and what names the download in
+	// the photographer's feed.
+	requestZip: (slug, pids, email) => request(`/api/g/${encodeURIComponent(slug)}/zip`, { method: "POST", body: { pids, email } }),
+	// Single-photo downloads happen in the browser; this is only the notification.
+	logDownload: (slug, pid, email) => request(`/api/g/${encodeURIComponent(slug)}/downloads`, { method: "POST", body: { pid, email } }),
 	readJob: jobId => request(`/api/jobs/${encodeURIComponent(jobId)}`),
+	// Behind the emailed link: no gallery session needed, the token is the key.
+	readArchive: token => request(`/api/archives/${encodeURIComponent(token)}`),
 	downloadUrl: (slug, pid) => `/api/g/${encodeURIComponent(slug)}/download/${encodeURIComponent(pid)}`
 };
 
@@ -118,7 +124,11 @@ export const adminApi = {
 	deletePhoto: (gid, pid) => request(`/api/admin/galleries/${gid}/photos/${pid}`, { method: "DELETE" }),
 
 	share: (gid, payload) => request(`/api/admin/galleries/${gid}/share`, { method: "POST", body: payload }),
-	selection: gid => request(`/api/admin/galleries/${gid}/selection`)
+	selection: gid => request(`/api/admin/galleries/${gid}/selection`),
+
+	// Download notifications. Pass a gid to narrow the feed to one gallery.
+	downloads: gid => request(`/api/admin/downloads${gid ? `?gid=${encodeURIComponent(gid)}` : ""}`),
+	markDownloadsSeen: () => request("/api/admin/downloads/seen", { method: "POST" })
 };
 
 /**

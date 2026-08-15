@@ -4,14 +4,16 @@ import { createHash } from "node:crypto";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 
 import { hasGallerySession, isAdmin, issueGallerySession, issueSignedCookies, penalise, requireGalleryAccess, SIGNED_COOKIE_TTL_SECONDS } from "../lib/auth.mjs";
-import { badRequest, forbidden, HttpError, json, notFound, publicOrigin, redirect } from "../lib/http.mjs";
+import { downloadEvent, recordDownload } from "../lib/downloads.mjs";
+import { badRequest, forbidden, HttpError, json, noContent, notFound, publicOrigin, redirect } from "../lib/http.mjs";
 import { jobId as newJobId } from "../lib/ids.mjs";
+import { emailButton, emailLayout, emailNote, emailParagraph, escapeHtml, sendEmail } from "../lib/mailer.mjs";
 import { verifyPassword } from "../lib/passwords.mjs";
 import { invokeProcessor } from "../lib/processor.mjs";
 import { getSecrets } from "../lib/secrets.mjs";
 import { getJson, objectExists, putJson, updateJson } from "../lib/store.mjs";
 import { signedUrl } from "../lib/cfsign.mjs";
-import { str, stringArray } from "../lib/validate.mjs";
+import { email as emailField, str, stringArray } from "../lib/validate.mjs";
 import { clientProjection, coverImageKey, emptyIndex, galleryKey, hdKey, INDEX_KEY, isExpired, jobKey, readyCover, selectionKey, zipMarkerKey } from "../lib/galleries.mjs";
 
 const lambda = new LambdaClient({});
@@ -39,6 +41,21 @@ async function readIndex() {
 }
 
 /**
+ * Archived and past-expiry galleries answer 410 rather than 404, so the client UI
+ * can say something better than "not found" — and so a link that used to work
+ * explains itself.
+ */
+function assertAvailable(gallery) {
+	if (gallery.status === "archived") {
+		throw new HttpError(410, "Cette galerie a été archivée.");
+	}
+
+	if (isExpired(gallery)) {
+		throw new HttpError(410, "Cette galerie a expiré.");
+	}
+}
+
+/**
  * Resolves a public slug to its stored record and enforces visibility.
  *
  * Draft galleries are admin-only; archived and past-expiry galleries answer 410
@@ -59,13 +76,7 @@ async function resolveGallery(request, slug) {
 
 	const gallery = record.data;
 
-	if (gallery.status === "archived") {
-		throw new HttpError(410, "Cette galerie a été archivée.");
-	}
-
-	if (isExpired(gallery)) {
-		throw new HttpError(410, "Cette galerie a expiré.");
-	}
+	assertAvailable(gallery);
 
 	// A draft is invisible to the world but previewable by an admin session.
 	if (gallery.status === "draft" && !(await isAdmin(request))) {
@@ -178,7 +189,10 @@ async function refresh({ request, params }) {
 
 // --- downloads -------------------------------------------------------------
 
-/** Throws unless this gallery currently permits the requested download kind. */
+/**
+ * Throws unless this gallery currently permits the requested download kind.
+ * Called with no kind to check only that downloads are on at all.
+ */
 function assertDownloadable(gallery, kind) {
 	if (!gallery.downloadsEnabled) {
 		throw forbidden("Les téléchargements sont désactivés pour cette galerie.");
@@ -241,12 +255,64 @@ async function cachedParts(gid, hash) {
 	return present.every(Boolean) ? parts : null;
 }
 
+/** Where a client picks their archive up. The job id is the whole credential. */
+const archiveUrl = (origin, jid) => `${origin}/archive/${jid}`;
+
+/**
+ * Tells the client where their archive will be, by email.
+ *
+ * Sent when the build starts rather than when it finishes: an archive of a large
+ * gallery takes minutes, the zipper has neither a signing key nor a sender
+ * identity, and a link that is live a moment later reads no differently in an
+ * inbox. The page behind it polls, so it is correct either way.
+ */
+async function mailArchiveLink({ gallery, recipient, link, origin, count, ready }) {
+	const subject = `Votre archive photo « ${gallery.title} »`;
+	const wait = ready ? "Votre archive est prête." : "Votre archive est en préparation, cela peut prendre quelques minutes.";
+	const scope = `${count} photo${count > 1 ? "s" : ""}`;
+
+	const lines = [
+		`Bonjour ${gallery.clientName || ""}`.trim() + ",",
+		"",
+		`${wait} Elle contient ${scope} de la galerie « ${gallery.title} ».`,
+		"",
+		link,
+		"",
+		"Ce lien reste valable 7 jours. Passé ce délai, votre galerie vous en prépare un nouveau.",
+		"",
+		"À très bientôt,",
+		"Ankaa Studio"
+	];
+
+	await sendEmail({
+		to: recipient,
+		subject,
+		text: lines.join("\n"),
+		html: emailLayout({
+			label: ready ? "Archive prête" : "Archive en préparation",
+			heading: "Votre archive photo",
+			preview: `${wait} Elle contient ${scope} de la galerie « ${gallery.title} ».`,
+			origin,
+			inner: [
+				emailParagraph(`Bonjour ${escapeHtml(gallery.clientName || "")},`),
+				emailParagraph(`${escapeHtml(wait)} Elle contient ${escapeHtml(scope)} de la galerie <strong>${escapeHtml(gallery.title)}</strong>.`),
+				emailButton(link, "Télécharger l’archive"),
+				emailNote("Ce lien reste valable 7 jours. Passé ce délai, votre galerie vous en prépare un nouveau.")
+			].join("")
+		})
+	});
+}
+
 /**
  * Batch download.
  *
  * The archive is content-addressed by the exact set of photo revisions it
  * contains, so the same request twice costs one build, and a selection gets its
  * own cache entry for free.
+ *
+ * The email address is the price of admission: it is what the link is sent to and
+ * what names the download in the photographer's feed. It is never verified — a
+ * client who types nonsense still gets their photos through this very response.
  */
 async function downloadZip({ request, params }) {
 	const gallery = await resolveGallery(request, params.slug);
@@ -254,6 +320,7 @@ async function downloadZip({ request, params }) {
 	assertDownloadable(gallery, "zip");
 
 	const requested = stringArray(request.body?.pids, "photos", { max: MAX_ZIP_PHOTOS });
+	const recipient = emailField(request.body?.email, "email", { required: true });
 	const ready = gallery.photos.filter(photo => photo.status === "ready");
 	const chosen = requested?.length ? ready.filter(photo => requested.includes(photo.pid)) : ready;
 
@@ -262,70 +329,123 @@ async function downloadZip({ request, params }) {
 	}
 
 	const ordered = chosen.slice().sort((a, b) => a.sortIndex - b.sortIndex);
+	// HD off does not mean no archive: the client gets the same web-sized preview
+	// the tiles hand over, watermark and all.
+	const variant = gallery.hdEnabled ? "hd" : "web";
+	const fingerprint = ordered.map(photo => `${photo.pid}_${photo.rev}`).join(",");
+	// The variant is part of what the archive *is*, so it belongs in the hash —
+	// otherwise turning HD off would keep serving the HD archive from cache, and
+	// turning it back on would serve the watermarked one. "hd" is left out of the
+	// digest so every archive built before this existed stays a cache hit.
 	const hash = createHash("sha1")
-		.update(ordered.map(photo => `${photo.pid}_${photo.rev}`).join(","))
+		.update(variant === "hd" ? fingerprint : `${variant}:${fingerprint}`)
 		.digest("hex")
 		.slice(0, 16);
 
-	const { cfPrivateKey } = await getSecrets();
 	const origin = publicOrigin(request);
-
-	const signFor = objectKey =>
-		signedUrl({
-			url: `${origin}/${objectKey}`,
-			expiresAt: Math.floor(Date.now() / 1000) + DOWNLOAD_URL_TTL_SECONDS,
-			keyPairId: process.env.CF_KEY_PAIR_ID,
-			privateKey: cfPrivateKey
-		});
-
 	const cached = await cachedParts(gallery.id, hash);
-
-	if (cached) {
-		return json(200, {
-			status: "done",
-			parts: cached.map(part => ({ name: part.name, bytes: part.bytes, url: signFor(part.key) }))
-		});
-	}
-
 	const jid = newJobId();
+	const now = new Date().toISOString();
+
+	// A cache hit gets a job document too, even though nothing will ever run for
+	// it: the emailed link points at a job, and one shape for both paths is what
+	// keeps the archive page from needing to know how it got there.
 	const job = {
 		jobId: jid,
 		gid: gallery.id,
 		slug: gallery.slug,
 		hash,
-		status: "pending",
+		variant,
+		email: recipient,
+		kind: requested?.length ? "selection" : "all",
+		status: cached ? "done" : "pending",
 		total: ordered.length,
-		done: 0,
-		parts: [],
+		done: cached ? ordered.length : 0,
+		parts: cached ?? [],
 		error: null,
-		createdAt: new Date().toISOString(),
-		updatedAt: new Date().toISOString()
+		createdAt: now,
+		updatedAt: now
 	};
 
 	await putJson(jobKey(jid), job);
 
-	await lambda.send(
-		new InvokeCommand({
-			FunctionName: process.env.ZIPPER_FUNCTION,
-			InvocationType: "Event",
-			Payload: Buffer.from(
-				JSON.stringify({
-					jobId: jid,
-					gid: gallery.id,
-					slug: gallery.slug,
-					hash,
-					photos: ordered.map(photo => ({
-						pid: photo.pid,
-						rev: photo.rev,
-						originalName: photo.originalName,
-						bytes: photo.bytes ?? 0
-					}))
-				})
-			)
-		})
-	);
+	if (!cached) {
+		await lambda.send(
+			new InvokeCommand({
+				FunctionName: process.env.ZIPPER_FUNCTION,
+				InvocationType: "Event",
+				Payload: Buffer.from(
+					JSON.stringify({
+						jobId: jid,
+						gid: gallery.id,
+						slug: gallery.slug,
+						hash,
+						variant,
+						// `bytes` is the HD file's size, which is only an upper bound for a
+						// web-variant archive. That is the safe direction: the zipper uses it
+						// to decide where to split, so it may split earlier than needed but
+						// never produces an oversized part.
+						photos: ordered.map(photo => ({
+							pid: photo.pid,
+							rev: photo.rev,
+							originalName: photo.originalName,
+							bytes: photo.bytes ?? 0
+						}))
+					})
+				)
+			})
+		);
+	}
 
-	return json(202, { status: "pending", jobId: jid, total: ordered.length });
+	const link = archiveUrl(origin, jid);
+	let emailed = true;
+
+	try {
+		await mailArchiveLink({ gallery, recipient, link, origin, count: ordered.length, ready: Boolean(cached) });
+	} catch (error) {
+		// The build is already running and this response carries the same link, so a
+		// bounced or throttled send is worth reporting, not worth failing over.
+		console.warn("Archive email not sent", { gid: gallery.id, jobId: jid, error: error.message });
+		emailed = false;
+	}
+
+	await recordDownload(downloadEvent({ gallery, email: recipient, kind: job.kind, count: ordered.length }));
+
+	return json(cached ? 200 : 202, {
+		status: job.status,
+		jobId: jid,
+		total: ordered.length,
+		archiveUrl: link,
+		emailed,
+		...(cached ? { parts: await signParts(job.parts, origin) } : {})
+	});
+}
+
+/** Signs an archive's parts for immediate use. Short-lived by design. */
+async function signParts(parts, origin) {
+	const { cfPrivateKey } = await getSecrets();
+
+	return (parts ?? []).map(part => ({
+		name: part.name,
+		bytes: part.bytes,
+		url: signedUrl({
+			url: `${origin}/${part.key}`,
+			expiresAt: Math.floor(Date.now() / 1000) + DOWNLOAD_URL_TTL_SECONDS,
+			keyPairId: process.env.CF_KEY_PAIR_ID,
+			privateKey: cfPrivateKey
+		})
+	}));
+}
+
+/** Progress, plus signed part URLs once there is something to sign. */
+async function jobProgress(job, request) {
+	return {
+		status: job.status,
+		total: job.total,
+		done: job.done,
+		error: job.error,
+		...(job.status === "done" ? { parts: await signParts(job.parts, publicOrigin(request)) } : {})
+	};
 }
 
 /** Poll target while a ZIP builds. Signs part URLs only once the job is done. */
@@ -346,30 +466,72 @@ async function readJob({ request, params }) {
 	// A job id is unguessable, but it must not become a way around the gate.
 	await requireGalleryAccess(request, gallery.data);
 
-	const response = {
-		status: job.status,
-		total: job.total,
-		done: job.done,
-		error: job.error
-	};
+	return json(200, await jobProgress(job, request));
+}
 
-	if (job.status === "done") {
-		const { cfPrivateKey } = await getSecrets();
-		const origin = publicOrigin(request);
+/**
+ * The emailed archive link.
+ *
+ * Deliberately outside the password gate: the mail is usually opened on a device
+ * that never saw the gallery, and the job id it carries is the credential — 95
+ * bits of it, expiring with the job document after 7 days. The gallery's own
+ * switches still apply, so turning downloads off retracts every link ever sent.
+ */
+async function readArchive({ request, params }) {
+	const record = await getJson(jobKey(params.jobId));
 
-		response.parts = job.parts.map(part => ({
-			name: part.name,
-			bytes: part.bytes,
-			url: signedUrl({
-				url: `${origin}/${part.key}`,
-				expiresAt: Math.floor(Date.now() / 1000) + DOWNLOAD_URL_TTL_SECONDS,
-				keyPairId: process.env.CF_KEY_PAIR_ID,
-				privateKey: cfPrivateKey
-			})
-		}));
+	if (!record) {
+		throw notFound("Cette archive n’existe plus. Demandez-en une nouvelle depuis votre galerie.");
 	}
 
-	return json(200, response);
+	const job = record.data;
+	const gallery = (await getJson(galleryKey(job.gid)))?.data;
+
+	if (!gallery) {
+		throw notFound("Galerie introuvable.");
+	}
+
+	assertAvailable(gallery);
+	assertDownloadable(gallery, "zip");
+
+	return json(200, {
+		title: gallery.title,
+		slug: gallery.slug,
+		...(await jobProgress(job, request))
+	});
+}
+
+/**
+ * Records a single-photo download.
+ *
+ * The download itself does not come through here — the tile either follows the
+ * signed redirect or saves the preview it already has — so this exists purely so
+ * the photographer's feed knows about it.
+ */
+async function logDownload({ request, params }) {
+	const gallery = await resolveGallery(request, params.slug);
+	await requireGalleryAccess(request, gallery);
+	assertDownloadable(gallery);
+
+	const recipient = emailField(request.body?.email, "email", { required: true });
+	const pid = str(request.body?.pid, "photo", { max: 40, required: true });
+	const photo = gallery.photos.find(candidate => candidate.pid === pid && candidate.status === "ready");
+
+	if (!photo) {
+		throw notFound("Photo introuvable.");
+	}
+
+	await recordDownload(
+		downloadEvent({
+			gallery,
+			email: recipient,
+			kind: "photo",
+			count: 1,
+			photoName: photo.originalName || photo.pid
+		})
+	);
+
+	return noContent();
 }
 
 // --- favourites ------------------------------------------------------------
@@ -409,8 +571,10 @@ export const clientRoutes = [
 	["POST", "/api/g/:slug/auth", authenticate],
 	["POST", "/api/g/:slug/refresh", refresh],
 	["GET", "/api/g/:slug/download/:pid", downloadPhoto],
+	["POST", "/api/g/:slug/downloads", logDownload],
 	["POST", "/api/g/:slug/zip", downloadZip],
 	["GET", "/api/g/:slug/selection", readSelection],
 	["PUT", "/api/g/:slug/selection", saveSelection],
-	["GET", "/api/jobs/:jobId", readJob]
+	["GET", "/api/jobs/:jobId", readJob],
+	["GET", "/api/archives/:jobId", readArchive]
 ];

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Seo } from "../components/Seo.jsx";
 import { adminApi } from "../utils/galleryApi.js";
 import { AdminLogin } from "./AdminLogin.jsx";
+import { DownloadFeed } from "./DownloadFeed.jsx";
 import { GalleryEditor } from "./GalleryEditor.jsx";
 import { GalleryList } from "./GalleryList.jsx";
 
@@ -42,9 +43,12 @@ export function AdminApp() {
 				<>
 					<nav className='admin-nav'>
 						<span className='admin-nav__brand'>Ankaa Studio · Galeries</span>
-						<button type='button' className='admin-nav__logout' onClick={logout}>
-							Se déconnecter
-						</button>
+						<div className='admin-nav__tools'>
+							<DownloadFeed />
+							<button type='button' className='admin-nav__logout' onClick={logout}>
+								Se déconnecter
+							</button>
+						</div>
 					</nav>
 
 					<main className='admin-main'>
