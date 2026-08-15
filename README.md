@@ -46,9 +46,12 @@ Un workflow GitHub Actions est fourni dans `.github/workflows/deploy.yml`. Il at
 
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
-- `AWS_REGION`
 - `S3_BUCKET_NAME`
 - `CLOUDFRONT_DISTRIBUTION_ID` si CloudFront est utilisé
+
+La région n’est pas un secret: elle est déclarée dans `AWS_REGION` au niveau du
+workflow. La pile CloudFormation n’est pas déployée par CI — utilisez
+`./infra/deploy.sh` depuis un poste de travail.
 
 ## Logo
 

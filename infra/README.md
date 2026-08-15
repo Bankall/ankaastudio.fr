@@ -189,13 +189,16 @@ is reversible at the DNS layer.
 
 ### GitHub Actions
 
-The `site` job runs on every push to `master` and needs
-`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `S3_BUCKET_NAME`,
-`CLOUDFRONT_DISTRIBUTION_ID`.
+The `site` job runs on every push to `master` and needs two secrets,
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, plus `S3_BUCKET_NAME` and
+`CLOUDFRONT_DISTRIBUTION_ID`. The region is not a secret; it is declared as
+`AWS_REGION` in the workflow itself and mirrors `infra/.env.deploy`.
 
-The `stack` job is `workflow_dispatch` only (tick *deploy_stack*) and additionally
-needs `ARTIFACTS_BUCKET`, `STACK_NAME`, `MEDIA_BUCKET`, `DOMAIN_NAME`,
-`CERTIFICATE_ARN`, `KEY_GROUP_ID`, `CF_KEY_PAIR_ID`, `SENDER_EMAIL`.
+Those credentials belong to the `ankaa-github-deploy` IAM user, whose inline
+policy allows only writes to the site bucket and invalidations on the one
+distribution. CI therefore cannot deploy the stack, by design: that needs rights
+to mint IAM roles and buckets. Run `./infra/deploy.sh` from a workstation for
+infrastructure changes.
 
 Note the invalidation is scoped to the four entry documents. A `/*` invalidation
 would also evict every cached photo — a needless bill and a slow gallery for the

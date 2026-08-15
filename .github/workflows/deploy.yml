@@ -1,4 +1,10 @@
-name: Deploy site and gallery stack
+name: Deploy the site
+
+# The CloudFormation stack is deliberately not deployed from CI. It creates IAM
+# roles, buckets and a CloudFront distribution, so it needs near-admin rights,
+# while the credentials here belong to a user scoped to the site bucket and one
+# invalidation path. Infrastructure changes go out from a workstation instead:
+#   cd infra && ./deploy.sh
 
 # A region is not a credential, so it lives here rather than in a secret that has
 # to be kept in sync by hand. Mirrors AWS_REGION in infra/.env.deploy.example.
@@ -11,11 +17,6 @@ on:
         branches:
             - master
     workflow_dispatch:
-        inputs:
-            deploy_stack:
-                description: Also deploy the CloudFormation stack (Lambdas, CloudFront, buckets)
-                type: boolean
-                default: false
 
 jobs:
     site:
@@ -29,10 +30,10 @@ jobs:
 
         steps:
             - name: Checkout repository
-              uses: actions/checkout@v4
+              uses: actions/checkout@v7
 
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v7
               with:
                   node-version: 22
                   cache: npm
@@ -47,7 +48,7 @@ jobs:
               run: npm run build
 
             - name: Configure AWS credentials
-              uses: aws-actions/configure-aws-credentials@v4
+              uses: aws-actions/configure-aws-credentials@v6
               with:
                   aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
                   aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -86,57 +87,3 @@ jobs:
                   aws cloudfront create-invalidation \
                     --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
                     --paths "/index.html" "/404.html" "/robots.txt" "/sitemap.xml"
-
-    stack:
-        name: Deploy the gallery stack
-        runs-on: ubuntu-latest
-        # Infrastructure changes are rare and touch CloudFront, so they are opt-in
-        # rather than riding along with every content push.
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_stack }}
-
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
-
-            - name: Setup Node.js
-              uses: actions/setup-node@v4
-              with:
-                  node-version: 22
-                  cache: npm
-
-            - name: Install dependencies
-              run: npm ci
-
-            - name: Bundle the Lambdas
-              run: ./infra/build.sh all
-
-            - name: Configure AWS credentials
-              uses: aws-actions/configure-aws-credentials@v4
-              with:
-                  aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-                  aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-                  aws-region: ${{ env.AWS_REGION }}
-
-            - name: Package the template
-              run: |
-                  aws cloudformation package \
-                    --template-file infra/template.yaml \
-                    --s3-bucket "${{ secrets.ARTIFACTS_BUCKET }}" \
-                    --s3-prefix gallery \
-                    --output-template-file packaged.yaml
-
-            - name: Deploy the stack
-              run: |
-                  aws cloudformation deploy \
-                    --template-file packaged.yaml \
-                    --stack-name "${{ secrets.STACK_NAME }}" \
-                    --capabilities CAPABILITY_IAM \
-                    --no-fail-on-empty-changeset \
-                    --parameter-overrides \
-                      SiteBucketName="${{ secrets.S3_BUCKET_NAME }}" \
-                      MediaBucketName="${{ secrets.MEDIA_BUCKET }}" \
-                      DomainName="${{ secrets.DOMAIN_NAME }}" \
-                      CertificateArn="${{ secrets.CERTIFICATE_ARN }}" \
-                      KeyGroupId="${{ secrets.KEY_GROUP_ID }}" \
-                      CloudFrontKeyPairId="${{ secrets.CF_KEY_PAIR_ID }}" \
-                      SenderEmail="${{ secrets.SENDER_EMAIL }}"
