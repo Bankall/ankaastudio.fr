@@ -170,7 +170,7 @@ export function GalleryEditor() {
 		return <p className='admin-empty'>Chargement…</p>;
 	}
 
-	const publicUrl = `${window.location.origin}/g/${gallery.slug}`;
+	const publicUrl = `${window.location.origin}/gallery/${gallery.slug}`;
 	const readyCount = gallery.photos.filter(photo => photo.status === "ready").length;
 	const pendingCount = gallery.photos.filter(photo => photo.status === "processing").length;
 	const failedCount = gallery.photos.filter(photo => photo.status === "failed").length;

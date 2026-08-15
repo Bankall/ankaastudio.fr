@@ -184,7 +184,7 @@ export function GalleryPage() {
 	if (status === "locked") {
 		return (
 			<>
-				<Seo title={`${state.title || "Galerie privée"} | Ankaa Studio`} description='Galerie privée Ankaa Studio.' path={`/g/${slug}`} noIndex />
+				<Seo title={`${state.title || "Galerie privée"} | Ankaa Studio`} description='Galerie privée Ankaa Studio.' path={`/gallery/${slug}`} noIndex />
 				<PasswordGate title={state.title} clientName={state.clientName} onUnlock={unlock} />
 			</>
 		);

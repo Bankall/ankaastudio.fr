@@ -39,7 +39,7 @@ export function GalleryList() {
 			const { gallery } = await adminApi.createGallery({ title });
 			// Straight into the editor: a gallery with no photos has nothing to show
 			// in the list anyway.
-			navigate(`/admin/galeries/${gallery.id}`);
+			navigate(`/admin/galleries/${gallery.id}`);
 		} catch (failure) {
 			setCreating(false);
 			setError(failure.message);
@@ -75,7 +75,7 @@ export function GalleryList() {
 			<ul className='admin-gallery-list'>
 				{(galleries ?? []).map(gallery => (
 					<li key={gallery.id}>
-						<Link className='admin-gallery-card' to={`/admin/galeries/${gallery.id}`}>
+						<Link className='admin-gallery-card' to={`/admin/galleries/${gallery.id}`}>
 							<span className='admin-gallery-card__thumb'>
 								{gallery.cover ?
 									<img src={gallery.cover} alt='' loading='lazy' />

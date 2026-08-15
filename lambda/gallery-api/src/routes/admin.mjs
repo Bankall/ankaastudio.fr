@@ -648,7 +648,7 @@ async function share({ request, params }) {
 	const password = str(request.body?.password, "mot de passe", { max: 200 });
 	const note = str(request.body?.note, "message", { max: 2000 });
 	const origin = publicOrigin(request);
-	const link = `${origin}/g/${gallery.slug}`;
+	const link = `${origin}/gallery/${gallery.slug}`;
 
 	if (gallery.status !== "published") {
 		throw badRequest("Publiez la galerie avant de l'envoyer au client.");

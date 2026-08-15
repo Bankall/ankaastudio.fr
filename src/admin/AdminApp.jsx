@@ -50,7 +50,7 @@ export function AdminApp() {
 					<main className='admin-main'>
 						<Routes>
 							<Route index element={<GalleryList />} />
-							<Route path='galeries/:gid' element={<GalleryEditor />} />
+							<Route path='galleries/:gid' element={<GalleryEditor />} />
 							<Route path='*' element={<Navigate to='/admin' replace />} />
 						</Routes>
 					</main>

@@ -1190,7 +1190,7 @@ button {
 }
 
 /* ==========================================================================
-   Client galleries (/g/:slug) and admin area (/admin)
+   Client galleries (/gallery/:slug) and admin area (/admin)
    Both live outside the marketing layout but reuse its tokens, buttons and
    .field styles so nothing has to be restyled twice.
    ========================================================================== */

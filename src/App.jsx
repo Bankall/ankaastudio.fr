@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from "react";
-import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { SiteFooter } from "./components/SiteFooter.jsx";
 import { SiteHeader } from "./components/SiteHeader.jsx";
 import { ScrollToTop } from "./components/ScrollToTop.jsx";
@@ -17,6 +17,12 @@ const AdminApp = lazy(() => import("./admin/AdminApp.jsx").then(module => ({ def
 
 function ChunkFallback() {
 	return <p className='route-fallback'>Chargement…</p>;
+}
+
+function LegacyGalleryRedirect() {
+	const { slug } = useParams();
+
+	return <Navigate to={`/gallery/${slug}`} replace />;
 }
 
 function Layout() {
@@ -58,7 +64,9 @@ function App() {
 				<Routes>
 					{/* Galleries and admin sit outside Layout on purpose: no site header,
 					    no footer, nothing competing with the photographs. */}
-					<Route path='/g/:slug' element={<GalleryPage />} />
+					<Route path='/gallery/:slug' element={<GalleryPage />} />
+					{/* Links to the old /g/:slug form are already in client inboxes. */}
+					<Route path='/g/:slug' element={<LegacyGalleryRedirect />} />
 					<Route path='/admin/*' element={<AdminApp />} />
 
 					<Route element={<Layout />}>
