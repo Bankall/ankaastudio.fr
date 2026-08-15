@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { Seo } from "../components/Seo.jsx";
 import { ApiError, galleryApi } from "../utils/galleryApi.js";
 import { DownloadPanel } from "./DownloadPanel.jsx";
+import { GalleryCover } from "./GalleryCover.jsx";
 import { Lightbox } from "./Lightbox.jsx";
 import { PasswordGate } from "./PasswordGate.jsx";
 import { PhotoTile } from "./PhotoTile.jsx";
@@ -11,6 +12,8 @@ import { PhotoTile } from "./PhotoTile.jsx";
 // the tab open overnight never meets a wall of broken images.
 const REFRESH_MARGIN_SECONDS = 30 * 60;
 const SELECTION_SAVE_DELAY_MS = 800;
+// What the cover's scroll cue aims at.
+const PHOTOS_ID = "photos";
 
 function formatDate(value) {
 	if (!value) {
@@ -119,7 +122,7 @@ export function GalleryPage() {
 		applyManifest(await galleryApi.unlock(slug, password));
 	};
 
-	/** Debounced: starring a dozen photos in a row is one write, not a dozen. */
+	/** Debounced: hearting a dozen photos in a row is one write, not a dozen. */
 	const toggleFavourite = useCallback(
 		pid => {
 			setSelection(current => {
@@ -210,46 +213,48 @@ export function GalleryPage() {
 	}
 
 	const { gallery } = state;
+	// coverPid is only a hint: it can be absent from an older manifest, so the first
+	// photo stands in rather than leaving the cover imageless.
+	const cover = photos.find(photo => photo.pid === gallery.coverPid) ?? photos[0] ?? null;
 
 	return (
 		<div className='gallery-view'>
-			<Seo title={`${gallery.title} | Ankaa Studio`} description={`Galerie privée : ${gallery.title}.`} path={`/g/${slug}`} noIndex />
+			<Seo title={`${gallery.title} | Ankaa Studio`} description={`Galerie privée : ${gallery.title}.`} path={`/gallery/${slug}`} noIndex />
 
-			<header className='gallery-view__header'>
-				<div className='container'>
-					<span className='gallery-view__eyebrow'>Ankaa Studio</span>
-					<h1 className='gallery-view__title'>{gallery.title}</h1>
-					<p className='gallery-view__meta'>
-						{[gallery.clientName, formatDate(gallery.shootDate), `${photos.length} photo${photos.length > 1 ? "s" : ""}`].filter(Boolean).join(" · ")}
+			<GalleryCover
+				photo={cover}
+				eyebrow='Ankaa Studio'
+				title={gallery.title}
+				meta={[gallery.clientName, formatDate(gallery.shootDate)].filter(Boolean).join(" · ")}
+				notice={gallery.expiresAt ? `Disponible jusqu’au ${formatDate(gallery.expiresAt)}.` : ""}
+				photosId={PHOTOS_ID}
+			/>
+
+			<main id={PHOTOS_ID} className='gallery-view__body'>
+				<div className='gallery-view__bar'>
+					<p className='gallery-view__count'>
+						{photos.length} photo{photos.length > 1 ? "s" : ""}
 					</p>
-
-					{gallery.expiresAt ?
-						<p className='gallery-view__notice'>Disponible jusqu’au {formatDate(gallery.expiresAt)}.</p>
-					:	null}
 
 					<DownloadPanel slug={slug} downloads={gallery.downloads} photoCount={photos.length} selection={selection} />
 				</div>
-			</header>
 
-			<main className='gallery-view__body'>
-				<div className='container'>
-					{photos.length === 0 ?
-						<p className='gallery-view__status'>Les photos arrivent bientôt.</p>
-					:	<div className='photo-grid'>
-							{photos.map((photo, index) => (
-								<PhotoTile
-									key={photo.pid}
-									photo={photo}
-									index={index}
-									isFavourite={favourites.has(photo.pid)}
-									showFavourites
-									onOpen={setLightboxIndex}
-									onToggleFavourite={toggleFavourite}
-								/>
-							))}
-						</div>
-					}
-				</div>
+				{photos.length === 0 ?
+					<p className='gallery-view__status gallery-view__status--empty'>Les photos arrivent bientôt.</p>
+				:	<div className='photo-grid'>
+						{photos.map((photo, index) => (
+							<PhotoTile
+								key={photo.pid}
+								photo={photo}
+								index={index}
+								isFavourite={favourites.has(photo.pid)}
+								showFavourites
+								onOpen={setLightboxIndex}
+								onToggleFavourite={toggleFavourite}
+							/>
+						))}
+					</div>
+				}
 			</main>
 
 			{lightboxIndex !== null ?

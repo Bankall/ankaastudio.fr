@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { HeartIcon } from "./HeartIcon.jsx";
 
 /**
  * Fullscreen viewer with keyboard navigation.
@@ -68,8 +69,14 @@ export function Lightbox({ photos, index, downloads, isFavourite, showFavourites
 
 				<div className='lightbox__actions'>
 					{showFavourites ?
-						<button type='button' className={`lightbox__action${isFavourite ? " is-active" : ""}`} onClick={() => onToggleFavourite(photo.pid)} aria-pressed={isFavourite}>
-							{isFavourite ? "★ Sélectionnée" : "☆ Sélectionner"}
+						<button
+							type='button'
+							className={`lightbox__action lightbox__action--favourite${isFavourite ? " is-active" : ""}`}
+							onClick={() => onToggleFavourite(photo.pid)}
+							aria-pressed={isFavourite}
+						>
+							<HeartIcon filled={isFavourite} />
+							{isFavourite ? "Sélectionnée" : "Sélectionner"}
 						</button>
 					:	null}
 

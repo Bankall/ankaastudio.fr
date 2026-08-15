@@ -116,14 +116,21 @@ export function clientProjection(gallery) {
 		zip: Boolean(gallery.downloadsEnabled && gallery.zipEnabled)
 	};
 
+	// The cover the client is told about has to be one of the photos it actually
+	// receives, so it is resolved against the ready set rather than through
+	// coverPhoto() — which may still point at a photo that is being derived.
+	const photos = readyPhotos(gallery);
+	const cover = photos.find(photo => photo.pid === gallery.coverPid) ?? photos[0] ?? null;
+
 	return {
 		slug: gallery.slug,
 		title: gallery.title,
 		clientName: gallery.clientName,
 		shootDate: gallery.shootDate,
 		expiresAt: gallery.expiresAt,
+		coverPid: cover?.pid ?? null,
 		downloads,
-		photos: readyPhotos(gallery).map(photo => ({
+		photos: photos.map(photo => ({
 			pid: photo.pid,
 			w: photo.w,
 			h: photo.h,

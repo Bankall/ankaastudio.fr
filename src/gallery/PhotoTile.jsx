@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { HeartIcon } from "./HeartIcon.jsx";
 
 // Fetching starts a little before the tile reaches the viewport, so the photo is
 // usually decoded by the time it is actually on screen and the fade reads as a
@@ -66,7 +67,9 @@ export function PhotoTile({ photo, index, isFavourite, showFavourites, onOpen, o
 						className='photo-tile__image'
 						src={photo.thumb}
 						srcSet={`${photo.thumb} 600w, ${photo.web} 2048w`}
-						sizes='(max-width: 640px) 92vw, (max-width: 1100px) 46vw, 30vw'
+						// Tracks the full-bleed column counts below, so the browser never
+						// picks the 2048px derivative for a tile a fifth of the screen wide.
+						sizes='(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1499px) 34vw, (max-width: 2099px) 25vw, 20vw'
 						alt={photo.caption || `Photo ${index + 1}`}
 						loading='lazy'
 						decoding='async'
@@ -87,7 +90,7 @@ export function PhotoTile({ photo, index, isFavourite, showFavourites, onOpen, o
 					aria-pressed={isFavourite}
 					aria-label={isFavourite ? "Retirer de la sélection" : "Ajouter à la sélection"}
 				>
-					{isFavourite ? "★" : "☆"}
+					<HeartIcon filled={isFavourite} />
 				</button>
 			:	null}
 
