@@ -74,9 +74,9 @@ async function resolveGallery(request, slug) {
 	return gallery;
 }
 
-function manifest(gallery, origin) {
+function manifest(gallery) {
 	return {
-		gallery: clientProjection(gallery, origin),
+		gallery: clientProjection(gallery),
 		// Lets the client refresh signed cookies just before they lapse instead of
 		// discovering the fact through a wall of broken images.
 		signedUntil: Math.floor(Date.now() / 1000) + SIGNED_COOKIE_TTL_SECONDS
@@ -91,7 +91,7 @@ async function authenticate({ request, params }) {
 
 	if (!gallery.password) {
 		// Open gallery: still hand out signed cookies, or nothing would load.
-		return json(200, manifest(gallery, origin), { cookies: await issueGallerySession(gallery.id, origin) });
+		return json(200, manifest(gallery), { cookies: await issueGallerySession(gallery.id, origin) });
 	}
 
 	const password = str(request.body?.password, "mot de passe", { max: 200, required: true });
@@ -102,7 +102,7 @@ async function authenticate({ request, params }) {
 		return json(401, { error: "Mot de passe incorrect." });
 	}
 
-	return json(200, manifest(gallery, origin), { cookies: await issueGallerySession(gallery.id, origin) });
+	return json(200, manifest(gallery), { cookies: await issueGallerySession(gallery.id, origin) });
 }
 
 async function read({ request, params }) {
@@ -120,7 +120,7 @@ async function read({ request, params }) {
 
 	// Refresh the signing cookies on every manifest read; they are cheap and it
 	// keeps a returning visitor from ever hitting an expired policy.
-	return json(200, manifest(gallery, origin), { cookies: await issueSignedCookies(gallery.id, origin) });
+	return json(200, manifest(gallery), { cookies: await issueSignedCookies(gallery.id, origin) });
 }
 
 async function refresh({ request, params }) {

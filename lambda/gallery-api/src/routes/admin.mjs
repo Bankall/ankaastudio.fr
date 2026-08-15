@@ -157,13 +157,12 @@ async function session({ request }) {
 
 async function listGalleries({ request }) {
 	await requireAdmin(request);
-	const origin = publicOrigin(request);
 	const index = (await getJson(INDEX_KEY))?.data ?? emptyIndex();
 
 	return json(200, {
 		galleries: index.galleries.map(row => ({
 			...row,
-			cover: row.coverPid ? `${origin}/${thumbKey(row.id, row.coverPid, row.coverRev)}` : null
+			cover: row.coverPid ? `/${thumbKey(row.id, row.coverPid, row.coverRev)}` : null
 		}))
 	});
 }
@@ -183,7 +182,7 @@ async function createGallery({ request }) {
 
 	await saveGallery(gallery, null);
 
-	return json(201, { gallery: adminProjection(gallery, publicOrigin(request)) });
+	return json(201, { gallery: adminProjection(gallery) });
 }
 
 async function readGallery({ request, params }) {
@@ -196,7 +195,7 @@ async function readGallery({ request, params }) {
 	// not one. Without this every tile 403s, except in the one case that hides
 	// the bug: having opened the gallery's own client page in another tab, which
 	// sets cookies for this exact path and only works once published.
-	return json(200, { gallery: adminProjection(data, origin) }, { cookies: await issueSignedCookies(params.gid, origin) });
+	return json(200, { gallery: adminProjection(data) }, { cookies: await issueSignedCookies(params.gid, origin) });
 }
 
 async function updateGallery({ request, params }) {
@@ -266,7 +265,7 @@ async function updateGallery({ request, params }) {
 
 	await saveGallery(gallery, etag);
 
-	return json(200, { gallery: adminProjection(gallery, publicOrigin(request)) });
+	return json(200, { gallery: adminProjection(gallery) });
 }
 
 async function deleteGallery({ request, params }) {
@@ -527,7 +526,7 @@ async function reconcile({ request, params }) {
 	// tiles turn into 403s when the 12-hour cookies lapse.
 	return json(
 		200,
-		{ gallery: adminProjection(gallery, origin), requeued: requeue.length },
+		{ gallery: adminProjection(gallery), requeued: requeue.length },
 		{ cookies: await issueSignedCookies(gallery.id, origin) }
 	);
 }
@@ -563,7 +562,7 @@ async function patchPhotos({ request, params }) {
 
 	await saveGallery(gallery, etag);
 
-	return json(200, { gallery: adminProjection(gallery, publicOrigin(request)) });
+	return json(200, { gallery: adminProjection(gallery) });
 }
 
 async function deletePhoto({ request, params }) {
@@ -591,7 +590,7 @@ async function deletePhoto({ request, params }) {
 
 	await saveGallery(gallery, etag);
 
-	return json(200, { gallery: adminProjection(gallery, publicOrigin(request)) });
+	return json(200, { gallery: adminProjection(gallery) });
 }
 
 /**

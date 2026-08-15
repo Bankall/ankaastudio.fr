@@ -7,6 +7,11 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   // build/ holds the minified Lambda bundles produced by infra/build.sh.
   globalIgnores(['dist', 'build']),
+  // Config files run in Node, not the browser.
+  {
+    files: ['*.config.js'],
+    languageOptions: { globals: globals.node },
+  },
   {
     files: ['**/*.{js,jsx}'],
     extends: [

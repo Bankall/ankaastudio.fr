@@ -9,6 +9,11 @@ npm install
 npm run dev
 ```
 
+Le serveur de dev ne sert que le site : `/api/*` et `/media/*` sont relayés vers
+la distribution CloudFront déployée (voir `vite.config.js`). Les galeries, l’admin
+et les envois de photos fonctionnent donc en local, mais sur les vraies données de
+production. Pour viser une autre distribution, poser `DEV_ORIGIN` dans `.env`.
+
 ## Production
 
 ```bash

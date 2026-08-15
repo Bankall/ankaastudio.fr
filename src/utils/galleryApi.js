@@ -2,7 +2,9 @@
 //
 // Everything lives behind /api on the same origin as the site, so there is no
 // base URL to configure and no CORS preflight — and the session cookies the API
-// sets are automatically same-origin.
+// sets are automatically same-origin. Deliberately so: the function URL behind
+// /api is AWS_IAM, so only CloudFront can call it, and the Vite dev server
+// proxies the path rather than the client switching to absolute URLs.
 
 const encoder = new TextEncoder();
 

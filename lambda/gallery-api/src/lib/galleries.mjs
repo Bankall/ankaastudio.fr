@@ -91,10 +91,25 @@ export function coverPhoto(gallery) {
 const readyPhotos = gallery => (gallery.photos ?? []).filter(photo => photo.status === "ready").sort((a, b) => a.sortIndex - b.sortIndex);
 
 /**
+ * Preview paths are root-relative, never absolute.
+ *
+ * These files sit behind CloudFront signed cookies, so the browser has to fetch
+ * them from the origin it holds those cookies for — its own. In production that
+ * is the same host the API answered on, so a relative path resolves to exactly
+ * what an absolute one would; in dev it is what lets the Vite proxy stand in for
+ * CloudFront. Signed *URLs* (the d/ prefix) are the opposite case: their
+ * signature covers the full URL, so those stay absolute.
+ */
+const previewPaths = (gallery, photo) => ({
+	thumb: `/${thumbKey(gallery.id, photo.pid, photo.rev)}`,
+	web: `/${webKey(gallery.id, photo.pid, photo.rev)}`
+});
+
+/**
  * What a client sees. Built field by field on purpose — the stored record holds
  * a password hash, and spreading it even once would leak it.
  */
-export function clientProjection(gallery, origin) {
+export function clientProjection(gallery) {
 	const downloads = {
 		enabled: Boolean(gallery.downloadsEnabled),
 		hd: Boolean(gallery.downloadsEnabled && gallery.hdEnabled),
@@ -114,14 +129,13 @@ export function clientProjection(gallery, origin) {
 			h: photo.h,
 			lqip: photo.lqip ?? null,
 			caption: photo.caption ?? null,
-			thumb: `${origin}/${thumbKey(gallery.id, photo.pid, photo.rev)}`,
-			web: `${origin}/${webKey(gallery.id, photo.pid, photo.rev)}`
+			...previewPaths(gallery, photo)
 		}))
 	};
 }
 
 /** What the admin sees: everything except the hash itself. */
-export function adminProjection(gallery, origin) {
+export function adminProjection(gallery) {
 	const { password, ...rest } = gallery;
 
 	return {
@@ -132,8 +146,7 @@ export function adminProjection(gallery, origin) {
 			.sort((a, b) => a.sortIndex - b.sortIndex)
 			.map(photo => ({
 				...photo,
-				thumb: photo.status === "ready" ? `${origin}/${thumbKey(gallery.id, photo.pid, photo.rev)}` : null,
-				web: photo.status === "ready" ? `${origin}/${webKey(gallery.id, photo.pid, photo.rev)}` : null
+				...(photo.status === "ready" ? previewPaths(gallery, photo) : { thumb: null, web: null })
 			}))
 	};
 }
