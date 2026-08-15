@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { DownloadIcon } from "./DownloadIcon.jsx";
 import { HeartIcon } from "./HeartIcon.jsx";
 
 /**
@@ -71,18 +72,23 @@ export function Lightbox({ photos, index, downloads, isFavourite, showFavourites
 					{showFavourites ?
 						<button
 							type='button'
-							className={`lightbox__action lightbox__action--favourite${isFavourite ? " is-active" : ""}`}
+							className={`lightbox__action lightbox__action--icon lightbox__action--favourite${isFavourite ? " is-active" : ""}`}
 							onClick={() => onToggleFavourite(photo.pid)}
 							aria-pressed={isFavourite}
+							aria-label={isFavourite ? "Retirer de la sélection" : "Ajouter à la sélection"}
 						>
 							<HeartIcon filled={isFavourite} />
-							{isFavourite ? "Sélectionnée" : "Sélectionner"}
 						</button>
 					:	null}
 
 					{downloads.hd ?
-						<button type='button' className='lightbox__action' onClick={() => onDownload(photo.pid)}>
-							Télécharger
+						<button
+							type='button'
+							className='lightbox__action lightbox__action--icon lightbox__action--download'
+							onClick={() => onDownload(photo.pid)}
+							aria-label='Télécharger cette photo'
+						>
+							<DownloadIcon />
 						</button>
 					:	null}
 

@@ -11,9 +11,10 @@
 	--accent: #dcbbb4;
 	--accent-strong: #cfb0aa;
 	--accent-stronger: #7a9165;
-	/* Favourite hearts: the palette's rose, deepened until a filled heart reads as
-	   marked on a bright photo as well as on the lightbox's near-black. */
-	--favourite: #c0736a;
+	/* Favourite hearts: the palette's rose, lifted until a filled heart reads as
+	   marked against the dark scrim it always sits on — the tile's top gradient and
+	   the lightbox's near-black alike. */
+	--favourite: #e29a92;
 	--shadow: 0 0 15px 0px rgb(212 212 212 / 36%);
 	--radius-lg: 8px;
 	--radius-md: 6px;
@@ -1580,37 +1581,84 @@ button {
 	}
 }
 
-.photo-tile__favourite {
+/* Carries the tile's controls instead of a chip behind each one: a bare outline
+   disappears on a pale sky, and a row of discs on every tile reads as a toolbar
+   rather than as photos. */
+.photo-tile__scrim {
 	position: absolute;
-	top: 0.5rem;
-	right: 0.5rem;
+	top: 0;
+	right: 0;
+	left: 0;
+	height: 4.5rem;
+	background: linear-gradient(to bottom, rgba(24, 20, 17, 0.5), rgba(24, 20, 17, 0));
+	opacity: 0;
+	transition: opacity 200ms ease-out;
+	/* The photo below is the click target; the scrim only tints it. */
+	pointer-events: none;
+}
+
+.photo-tile__actions {
+	position: absolute;
+	/* Above the scrim, which follows it in the DOM. */
+	z-index: 1;
+	top: 0.35rem;
+	right: 0.35rem;
+	display: flex;
+	align-items: center;
+	gap: 0.1rem;
+}
+
+.photo-tile__action {
 	display: grid;
 	place-items: center;
 	width: 2.2rem;
 	height: 2.2rem;
-	border-radius: 50%;
-	/* A chip rather than a bare heart on the photo: the outline alone disappears on
-	   a bright dress or a pale sky. */
-	background: rgba(255, 253, 250, 0.86);
-	color: var(--muted);
+	color: #fffdf8;
 	cursor: pointer;
 	opacity: 0;
+	/* Tucked above the tile's edge so the controls drop into place on hover rather
+	   than fading in on top of the photo. */
+	translate: 0 -0.9rem;
 	transition:
-		opacity 160ms ease-out,
-		scale 160ms ease-out;
+		opacity 200ms ease-out,
+		translate 200ms ease-out,
+		color 200ms ease-out;
 }
 
-.photo-tile:hover .photo-tile__favourite,
-.photo-tile__favourite:focus-visible,
-.photo-tile__favourite.is-active {
+/* .is-active on the heart alone: a picked photo keeps its marker on screen, while
+   the download control stays a hover affordance. */
+.photo-tile:hover .photo-tile__action,
+.photo-tile__action:focus-visible,
+.photo-tile__action.is-active {
+	opacity: 1;
+	translate: 0 0;
+}
+
+/* An already-picked photo keeps its heart, so it keeps the gradient that makes the
+   heart legible. */
+.photo-tile:hover .photo-tile__scrim,
+.photo-tile:focus-within .photo-tile__scrim,
+.photo-tile.is-picked .photo-tile__scrim {
 	opacity: 1;
 }
 
-.photo-tile__favourite.is-active {
+.photo-tile__action--favourite:hover,
+.photo-tile__action--favourite.is-active {
 	color: var(--favourite);
 }
 
-.heart-icon {
+.photo-tile__action--download:hover {
+	color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.photo-tile__action {
+		translate: 0 0;
+	}
+}
+
+.heart-icon,
+.download-icon {
 	width: 1.15rem;
 	height: 1.15rem;
 }
@@ -1667,21 +1715,31 @@ button {
 	background: rgba(255, 253, 248, 0.24);
 }
 
-.lightbox__action--favourite {
+/* Bare icons, matching the tiles: on an overlay this dark the outlines carry
+   themselves, and the labels only repeated what the shapes already say. */
+.lightbox__action--icon,
+.lightbox__action--icon:hover,
+.lightbox__action--icon.is-active {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.45rem;
+	padding: 0.45rem;
+	background: none;
 }
 
-.lightbox__action--favourite .heart-icon {
-	width: 1rem;
-	height: 1rem;
+.lightbox__action--icon svg {
+	width: 1.35rem;
+	height: 1.35rem;
+	transition: color 200ms ease-out;
 }
 
-/* Lifted off the deepened rose used on the tiles: at 12% white behind it, the
-   darker tone would sink into the overlay. */
+/* With the chips gone, the colour shift is the only hover affordance left. */
+.lightbox__action--download:hover .download-icon {
+	color: var(--accent);
+}
+
+.lightbox__action--favourite:hover .heart-icon,
 .lightbox__action--favourite.is-active .heart-icon {
-	color: #e29a92;
+	color: var(--favourite);
 }
 
 .lightbox__close {

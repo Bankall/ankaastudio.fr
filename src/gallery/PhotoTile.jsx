@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { DownloadIcon } from "./DownloadIcon.jsx";
 import { HeartIcon } from "./HeartIcon.jsx";
 
 // Fetching starts a little before the tile reaches the viewport, so the photo is
@@ -19,7 +20,7 @@ const PRELOAD_MARGIN = "300px 0px";
  * a very generous threshold — on a long gallery that still means dozens of signed
  * requests the client never sees.
  */
-export function PhotoTile({ photo, index, isFavourite, showFavourites, onOpen, onToggleFavourite }) {
+export function PhotoTile({ photo, index, isFavourite, showFavourites, showDownload, onOpen, onToggleFavourite, onDownload }) {
 	const figureRef = useRef(null);
 	const imageRef = useRef(null);
 	// No observer (old browser, jsdom) means no lazy loading: show everything.
@@ -56,7 +57,13 @@ export function PhotoTile({ photo, index, isFavourite, showFavourites, onOpen, o
 	}, [visible]);
 
 	return (
-		<figure ref={figureRef} className={`photo-tile${loaded ? " is-loaded" : ""}`} style={{ aspectRatio: `${photo.w} / ${photo.h}` }}>
+		<figure
+			ref={figureRef}
+			// is-picked keeps the scrim lit for a photo whose heart stays on screen
+			// after the pointer leaves.
+			className={`photo-tile${loaded ? " is-loaded" : ""}${isFavourite ? " is-picked" : ""}`}
+			style={{ aspectRatio: `${photo.w} / ${photo.h}` }}
+		>
 			<button type='button' className='photo-tile__button' onClick={() => onOpen(index)} aria-label={photo.caption || `Ouvrir la photo ${index + 1}`}>
 				{photo.lqip ?
 					<img className='photo-tile__placeholder' src={photo.lqip} alt='' aria-hidden='true' />
@@ -82,16 +89,35 @@ export function PhotoTile({ photo, index, isFavourite, showFavourites, onOpen, o
 				:	null}
 			</button>
 
-			{showFavourites ?
-				<button
-					type='button'
-					className={`photo-tile__favourite${isFavourite ? " is-active" : ""}`}
-					onClick={() => onToggleFavourite(photo.pid)}
-					aria-pressed={isFavourite}
-					aria-label={isFavourite ? "Retirer de la sélection" : "Ajouter à la sélection"}
-				>
-					<HeartIcon filled={isFavourite} />
-				</button>
+			{showFavourites || showDownload ?
+				<>
+					<div className='photo-tile__actions'>
+						{showDownload ?
+							<button
+								type='button'
+								className='photo-tile__action photo-tile__action--download'
+								onClick={() => onDownload(photo.pid)}
+								aria-label={`Télécharger la photo ${index + 1}`}
+							>
+								<DownloadIcon />
+							</button>
+						:	null}
+
+						{showFavourites ?
+							<button
+								type='button'
+								className={`photo-tile__action photo-tile__action--favourite${isFavourite ? " is-active" : ""}`}
+								onClick={() => onToggleFavourite(photo.pid)}
+								aria-pressed={isFavourite}
+								aria-label={isFavourite ? "Retirer de la sélection" : "Ajouter à la sélection"}
+							>
+								<HeartIcon filled={isFavourite} />
+							</button>
+						:	null}
+					</div>
+
+					<span className='photo-tile__scrim' aria-hidden='true' />
+				</>
 			:	null}
 
 			{photo.caption ?

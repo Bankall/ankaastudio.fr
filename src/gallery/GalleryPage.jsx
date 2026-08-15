@@ -223,6 +223,9 @@ export function GalleryPage() {
 
 			<GalleryCover
 				photo={cover}
+				// The API only sends coverImage once the unmarked derivative it points
+				// at exists; until then the marked preview opens the gallery.
+				src={gallery.coverImage ?? cover?.web}
 				eyebrow='Ankaa Studio'
 				title={gallery.title}
 				meta={[gallery.clientName, formatDate(gallery.shootDate)].filter(Boolean).join(" · ")}
@@ -249,8 +252,10 @@ export function GalleryPage() {
 								index={index}
 								isFavourite={favourites.has(photo.pid)}
 								showFavourites
+								showDownload={gallery.downloads.hd}
 								onOpen={setLightboxIndex}
 								onToggleFavourite={toggleFavourite}
+								onDownload={downloadPhoto}
 							/>
 						))}
 					</div>
