@@ -2,6 +2,7 @@
 
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 
+import { freezeOriginals, originalsState, purgeDerivatives, thawOriginals } from "../lib/archive.mjs";
 import { clearAdminSession, issueAdminSession, issueSignedCookies, penalise, requireAdmin } from "../lib/auth.mjs";
 import { markDownloadsSeen, readDownloadLog } from "../lib/downloads.mjs";
 import { badRequest, conflict, json, noContent, notFound, publicOrigin } from "../lib/http.mjs";
@@ -10,7 +11,7 @@ import { emailButton, emailLayout, emailNote, emailParagraph, emailQuote, emailV
 import { hashPassword, verifyPassword } from "../lib/passwords.mjs";
 import { invokeProcessor } from "../lib/processor.mjs";
 import { getSecrets } from "../lib/secrets.mjs";
-import { deleteKeys, deletePrefix, getJson, listKeys, putJson, s3, updateJson } from "../lib/store.mjs";
+import { deleteKeys, deletePrefix, getJson, listKeys, mapWithLimit, putJson, s3, updateJson } from "../lib/store.mjs";
 import { bool, email, isoDate, oneOf, str, stringArray } from "../lib/validate.mjs";
 import {
 	adminProjection,
@@ -112,23 +113,6 @@ function coverImageOf(gallery) {
 	return cover ? coverImageKey(gallery.id, cover.pid, cover.rev) : null;
 }
 
-async function mapWithLimit(items, limit, mapper) {
-	const results = new Array(items.length);
-	let cursor = 0;
-
-	async function worker() {
-		while (cursor < items.length) {
-			const index = cursor;
-			cursor += 1;
-			results[index] = await mapper(items[index], index);
-		}
-	}
-
-	await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-
-	return results;
-}
-
 // --- authentication --------------------------------------------------------
 
 async function login({ request }) {
@@ -204,6 +188,7 @@ async function updateGallery({ request, params }) {
 	await requireAdmin(request);
 	const { data: gallery, etag } = await loadGallery(params.gid);
 	const body = request.body ?? {};
+	const wasArchived = gallery.status === "archived";
 
 	const assignments = {
 		title: str(body.title, "titre", { max: 160, allowEmpty: false }),
@@ -277,7 +262,35 @@ async function updateGallery({ request, params }) {
 		}
 	}
 
+	const isArchived = gallery.status === "archived";
+
+	if (isArchived) {
+		// Marked before the files go, so nothing is left advertising a derivative that
+		// is about to be deleted: "archived" drops the photo from client manifests and
+		// stops adminProjection emitting preview URLs for it. Everything else on the
+		// entry — pid, rev, extension, original filename, caption, order — is exactly
+		// what a rebuild needs, so none of it is cleared.
+		for (const photo of gallery.photos) {
+			photo.status = "archived";
+		}
+	}
+
 	await saveGallery(gallery, etag);
+
+	if (isArchived) {
+		// Record first: it now says "archived", so every client route answers 410 and
+		// no one can ask for a file while it is being deleted. Both calls are
+		// unconditional rather than only-on-transition, which is what makes them
+		// idempotent — a run cut short by a timeout is finished by the next save,
+		// instead of leaving orphaned derivatives to bill in silence.
+		await purgeDerivatives(gallery.id);
+		await freezeOriginals(gallery.id);
+	} else if (wasArchived) {
+		// Leaving archive cannot restore the gallery by itself: the derivatives are
+		// gone, and the originals need up to 48 hours to become readable again. This
+		// starts that clock; Régénérer les aperçus does the rebuild once it is done.
+		await thawOriginals(gallery.id);
+	}
 
 	return json(200, { gallery: adminProjection(gallery) });
 }
@@ -614,11 +627,30 @@ async function deletePhoto({ request, params }) {
  * Re-derives every photo, e.g. after flipping the watermark mode.
  *
  * Derivative keys carry a rev suffix, so a new rev is a new URL: the old edge
- * cache entries simply age out and no CloudFront invalidation is needed.
+ * cache entries simply age out and no CloudFront invalidation is needed. This is
+ * also how a gallery comes back from being archived, since by then the originals
+ * are the only thing left.
  */
 async function reprocess({ request, params }) {
 	await requireAdmin(request);
 	const { data: gallery, etag } = await loadGallery(params.gid);
+
+	// Every derive reads an original, and one in Deep Archive will not answer a GET.
+	// Checking here costs a single listing and turns what would be a gallery's worth
+	// of failed invocations into one sentence — and, when nothing has asked for the
+	// restore yet, starts it, so the photographer never has to round-trip through
+	// the status select to get unstuck.
+	const originals = await originalsState(gallery.id);
+
+	if (originals.frozen > 0) {
+		await thawOriginals(gallery.id);
+
+		throw conflict(`Restauration de ${originals.frozen} original(aux) lancée. Comptez jusqu'à 48 h, puis relancez la régénération.`);
+	}
+
+	if (originals.restoring > 0) {
+		throw conflict(`Restauration en cours : ${originals.restoring} original(aux) encore indisponible(s). Réessayez plus tard — comptez jusqu'à 48 h au total.`);
+	}
 
 	const stale = [];
 	for (const photo of gallery.photos) {

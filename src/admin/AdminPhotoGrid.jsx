@@ -89,7 +89,13 @@ export function AdminPhotoGrid({ photos, coverPid, onReorder, onSetCover, onDele
 
 					{photo.thumb ?
 						<img className='admin-photo__image' src={photo.thumb} alt={photo.originalName} loading='lazy' draggable={false} />
-					:	<span className='admin-photo__pending'>{photo.status === "failed" ? "échec" : "traitement…"}</span>}
+					:	<span className='admin-photo__pending'>
+							{photo.status === "failed" ?
+								"échec"
+							: photo.status === "archived" ?
+								"archivée"
+							:	"traitement…"}
+						</span>}
 
 					{photo.pid === coverPid ?
 						<span className='admin-photo__cover-flag'>Couverture</span>

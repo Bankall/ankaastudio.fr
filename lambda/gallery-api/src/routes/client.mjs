@@ -463,8 +463,13 @@ async function readJob({ request, params }) {
 		throw notFound("Galerie introuvable.");
 	}
 
-	// A job id is unguessable, but it must not become a way around the gate.
+	// A job id is unguessable, but it must not become a way around the gate — and
+	// the gate is more than the password: once the job is done this hands back
+	// freshly signed part URLs, so archiving the gallery or turning downloads off
+	// has to retract it here too, exactly as it does for the emailed link below.
 	await requireGalleryAccess(request, gallery.data);
+	assertAvailable(gallery.data);
+	assertDownloadable(gallery.data, "zip");
 
 	return json(200, await jobProgress(job, request));
 }

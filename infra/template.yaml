@@ -158,6 +158,29 @@ Resources:
                       Transitions:
                           - StorageClass: GLACIER_IR
                             TransitionInDays: 60
+                    # Archiving a gallery deletes every derivative and tags what is
+                    # left, which is how the originals get here. Deep Archive is ~4×
+                    # cheaper again than Glacier IR and needs an explicit 48-hour
+                    # restore, which is the trade the archived status exists to make.
+                    #
+                    # A tag, not a prefix: the gallery id sits in the middle of
+                    # originals/<gid>/<pid>.<ext> and lifecycle prefixes cannot
+                    # wildcard. The API tags on archive and untags on the way out —
+                    # untagging alone brings nothing back, since transitions only ever
+                    # go one way.
+                    #
+                    # 1 day, not 0: transitions are keyed on object age, not on when
+                    # the tag was applied, so for anything older than a day this means
+                    # "at the next daily lifecycle pass".
+                    - Id: archived-originals-to-deep-archive
+                      Status: Enabled
+                      Prefix: originals/
+                      TagFilters:
+                          - Key: ankaa-state
+                            Value: archived
+                      Transitions:
+                          - StorageClass: DEEP_ARCHIVE
+                            TransitionInDays: 1
                     # ZIP job documents are progress trackers a client polls for a
                     # few minutes. Deleting a gallery does not remove them — on
                     # purpose: a job may still be running against it — so they are
@@ -256,6 +279,12 @@ Resources:
                       - Effect: Allow
                         Action: ses:SendEmail
                         Resource: "*"
+                      # Archiving a gallery. S3CrudPolicy covers neither tagging nor
+                      # restores: the tag is what the deep-archive lifecycle rule
+                      # matches on, and RestoreObject is the only way back out.
+                      - Effect: Allow
+                        Action: [s3:PutObjectTagging, s3:GetObjectTagging, s3:DeleteObjectTagging, s3:RestoreObject]
+                        Resource: !Sub "arn:aws:s3:::${MediaBucketName}/*"
 
     GalleryProcessorFunction:
         Type: AWS::Serverless::Function

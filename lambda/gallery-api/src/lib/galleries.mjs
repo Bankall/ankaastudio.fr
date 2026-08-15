@@ -34,6 +34,14 @@ export const WATERMARK_KEY = "assets/watermark.png";
 export const WATERMARK_MODES = ["preview", "all", "none"];
 export const GALLERY_STATUSES = ["draft", "published", "archived"];
 
+// A photo's own state, which is not the gallery's:
+//   processing — uploaded, derivatives not written yet
+//   ready      — derivatives exist and may be served
+//   failed     — the processor gave up on it
+//   archived   — the original is kept, every derivative has been deleted
+// Only "ready" is servable, which is why readyPhotos() gates on it rather than
+// listing the states that are not.
+
 export function newGallery({ id, slug, title, clientName = "", clientEmail = "", shootDate = null }) {
 	const now = new Date().toISOString();
 
@@ -193,7 +201,10 @@ export function indexEntry(gallery) {
 		hasPassword: Boolean(gallery.password),
 		downloadsEnabled: Boolean(gallery.downloadsEnabled),
 		expiresAt: gallery.expiresAt,
-		photoCount: (gallery.photos ?? []).filter(photo => photo.status === "ready").length,
+		// Archived photos count: their originals are still there, and a gallery that
+		// reported "0 photos" would invite deleting the one thing that cannot be
+		// rebuilt.
+		photoCount: (gallery.photos ?? []).filter(photo => photo.status === "ready" || photo.status === "archived").length,
 		coverPid: cover?.pid ?? null,
 		coverRev: cover?.rev ?? null,
 		createdAt: gallery.createdAt,

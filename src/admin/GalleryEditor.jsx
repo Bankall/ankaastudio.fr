@@ -18,7 +18,7 @@ const WATERMARK_LABELS = {
 const STATUS_LABELS = {
 	draft: "Brouillon — invisible pour le client",
 	published: "En ligne — accessible via le lien",
-	archived: "Archivée — le lien renvoie une page d’expiration"
+	archived: "Archivée — aperçus supprimés, originaux en archive froide"
 };
 
 /** ISO timestamp ⇄ the yyyy-mm-dd that <input type="date"> wants. */
@@ -187,6 +187,20 @@ export function GalleryEditor() {
 		}
 	};
 
+	// Archiving deletes every derivative, so it must not happen on a mis-click in a
+	// select. It stays a confirmation rather than a separate guarded action because
+	// the originals survive and Régénérer les aperçus rebuilds the rest — expensive
+	// to undo, not impossible.
+	const handleStatus = async status => {
+		const confirmation = `Archiver « ${gallery.title} » ?\n\nLes aperçus, fichiers HD et archives ZIP seront supprimés, et les originaux placés en archive froide. La galerie renverra une page d’expiration.\n\nTout est régénérable depuis les originaux, en comptant jusqu’à 48 h pour les ressortir d’archive.`;
+
+		if (status === "archived" && !window.confirm(confirmation)) {
+			return;
+		}
+
+		await patch({ status });
+	};
+
 	const handleReprocess = async () => {
 		if (!window.confirm("Régénérer tous les aperçus avec les réglages actuels de filigrane ? Les archives ZIP en cache seront supprimées.")) {
 			return;
@@ -228,6 +242,7 @@ export function GalleryEditor() {
 	const readyCount = gallery.photos.filter(photo => photo.status === "ready").length;
 	const pendingCount = gallery.photos.filter(photo => photo.status === "processing").length;
 	const failedCount = gallery.photos.filter(photo => photo.status === "failed").length;
+	const archivedCount = gallery.photos.filter(photo => photo.status === "archived").length;
 
 	return (
 		<section className='admin-section'>
@@ -241,13 +256,14 @@ export function GalleryEditor() {
 						{readyCount} photo{readyCount > 1 ? "s" : ""} en ligne
 						{pendingCount > 0 ? ` · ${pendingCount} en traitement` : ""}
 						{failedCount > 0 ? ` · ${failedCount} en échec` : ""}
+						{archivedCount > 0 ? ` · ${archivedCount} archivée${archivedCount > 1 ? "s" : ""}` : ""}
 						{saving ? " · enregistrement…" : ""}
 						{notice ? ` · ${notice}` : ""}
 					</p>
 				</div>
 
 				<div className='admin-section__actions'>
-					<select value={gallery.status} onChange={event => patch({ status: event.target.value })} aria-label='Statut de la galerie'>
+					<select value={gallery.status} onChange={event => handleStatus(event.target.value)} aria-label='Statut de la galerie'>
 						{Object.entries(STATUS_LABELS).map(([value, label]) => (
 							<option key={value} value={value}>
 								{label}
@@ -260,6 +276,18 @@ export function GalleryEditor() {
 			{error ?
 				<p className='admin-error' role='alert'>
 					{error}
+				</p>
+			:	null}
+
+			{/* The only place that explains how to get an archived gallery back, which
+			    is worth a permanent line rather than a notice that fades: the answer
+			    involves a 48-hour wait and is not guessable from the status select. */}
+			{archivedCount > 0 ?
+				<p className='admin-hint'>
+					{archivedCount} photo{archivedCount > 1 ? "s" : ""} archivée{archivedCount > 1 ? "s" : ""} : seuls les originaux subsistent.{" "}
+					{gallery.status === "archived" ?
+						"Repassez la galerie en brouillon ou en ligne pour lancer leur restauration."
+					:	"Régénérez les aperçus pour les reconstruire — sortir les originaux d’archive peut prendre jusqu’à 48 h."}
 				</p>
 			:	null}
 

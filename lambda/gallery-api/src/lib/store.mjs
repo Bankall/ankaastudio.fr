@@ -136,8 +136,14 @@ export async function objectExists(key) {
 	}
 }
 
-/** Every key under a prefix, following continuation tokens. */
-export async function listKeys(prefix) {
+/**
+ * Every key under a prefix, following continuation tokens.
+ *
+ * `restoreStatus` asks S3 for each object's thaw state as well. It is opt-in
+ * because it is an optional attribute S3 only computes when requested, and the
+ * callers that just want key names have no use for it.
+ */
+export async function listKeys(prefix, { restoreStatus = false } = {}) {
 	const keys = [];
 	let token;
 
@@ -146,18 +152,51 @@ export async function listKeys(prefix) {
 			new ListObjectsV2Command({
 				Bucket: BUCKET,
 				Prefix: prefix,
-				ContinuationToken: token
+				ContinuationToken: token,
+				...(restoreStatus ? { OptionalObjectAttributes: ["RestoreStatus"] } : {})
 			})
 		);
 
 		for (const item of result.Contents ?? []) {
-			keys.push({ key: item.Key, size: Number(item.Size || 0), modified: item.LastModified });
+			keys.push({
+				key: item.Key,
+				size: Number(item.Size || 0),
+				modified: item.LastModified,
+				storageClass: item.StorageClass ?? "STANDARD",
+				// Present only once a restore has been asked for, so absent means
+				// "nobody has tried", not "not restored".
+				restore: item.RestoreStatus ?? null
+			});
 		}
 
 		token = result.IsTruncated ? result.NextContinuationToken : undefined;
 	} while (token);
 
 	return keys;
+}
+
+/**
+ * Runs `mapper` over `items` with at most `limit` in flight, preserving order.
+ *
+ * Lives here because every caller is fanning out one S3 request per object, where
+ * unbounded Promise.all over a few thousand keys is what turns a slow gallery into
+ * a throttled one.
+ */
+export async function mapWithLimit(items, limit, mapper) {
+	const results = new Array(items.length);
+	let cursor = 0;
+
+	async function worker() {
+		while (cursor < items.length) {
+			const index = cursor;
+			cursor += 1;
+			results[index] = await mapper(items[index], index);
+		}
+	}
+
+	await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+
+	return results;
 }
 
 /** Bulk delete, batched at the 1000-key API limit. */

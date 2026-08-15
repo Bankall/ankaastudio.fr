@@ -236,11 +236,73 @@ new ones are queued.
 *Actualiser* in the editor. `reconcile` folds in every sidecar it finds and
 re-queues any original that never produced one.
 
+### Archiving a gallery
+
+Setting a gallery to **Archivée** is a real archive, not a visibility flag. It
+throws away every byte that can be rebuilt and parks the rest as cheaply as S3
+allows — around 3 % of the storage cost of a live gallery.
+
+What happens, in this order (`updateGallery` in `routes/admin.mjs`):
+
+1. Every photo's `status` becomes `archived` and the record is saved **first**, so
+   all client routes answer `410` before a single file disappears. Nothing else on
+   the entry is cleared — `pid`, `rev`, extension, original filename, caption and
+   order are exactly what a rebuild needs.
+2. `purgeDerivatives` deletes `media/g/<gid>/` (previews, unmarked cover, HD, cached
+   ZIPs), the processor sidecars under `db/galleries/<gid>/photos/`, and the built-archive
+   markers under `db/zips/<gid>/`. The sidecars have to go too: `reconcile` folds any
+   sidecar it finds back into the record, so one left behind would flip an archived
+   photo to `ready` pointing at a derivative that no longer exists.
+3. `freezeOriginals` tags each original `ankaa-state=archived`, which is what the
+   `archived-originals-to-deep-archive` lifecycle rule matches on. S3 moves them to
+   `DEEP_ARCHIVE` on its next daily pass.
+
+**Why a tag and a lifecycle rule rather than a copy.** By the time a gallery is
+archived its originals are usually already in `GLACIER_IR`, and rewriting an object
+in place is billed as a *retrieval of every byte* — about $0.03/GB, so ~$61 for 2 TB.
+A lifecycle transition is billed per object instead, a few cents for the same set.
+Lifecycle prefixes cannot wildcard and the `<gid>` sits in the middle of
+`originals/<gid>/<pid>.<ext>`, so per-gallery selection has to go through
+`TagFilters` — the same trick the `expire-zip-cache` rule already uses. The rule's
+`TransitionInDays: 1` is counted from *object creation*, not from when the tag was
+applied, so for anything older than a day it means "at the next pass".
+
+Both steps run unconditionally on every save of an archived gallery rather than
+only on the transition. That is what makes them idempotent: a run cut short by a
+Lambda timeout is finished by the next save, instead of leaving orphaned
+derivatives to bill in silence. `freezeOriginals` skips objects already in
+`DEEP_ARCHIVE`, so the repeat costs one LIST.
+
+**Getting a gallery back.** Move it out of *Archivée*, then press *Régénérer les
+aperçus* once the originals are readable:
+
+- Leaving archive calls `thawOriginals` — it removes the tag and issues a
+  `RestoreObject` at the **Bulk** tier (`Days: 7`). Bulk takes up to **48 hours** and
+  costs about an eighth of the 12-hour Standard tier.
+- *Régénérer* refuses while anything is still frozen and tells you how many. It also
+  *starts* the restore itself if it finds untouched objects, so pressing it is enough
+  even if the status change was missed.
+- A restore is a temporary readable copy, **not** a move: the object stays in
+  `DEEP_ARCHIVE`, and the copy expires after 7 days. Removing the tag does not bring
+  anything back on its own — lifecycle transitions only ever go one way. Re-deriving
+  later than the window means paying for another restore.
+- Restore state is read with one `ListObjectsV2` per gallery using
+  `OptionalObjectAttributes: ["RestoreStatus"]`, not a `HeadObject` per photo.
+
+**Minimum-duration charges.** `DEEP_ARCHIVE` bills a minimum of 180 days and
+`GLACIER_IR` 90, so archiving and immediately un-archiving still pays out the
+remainder. Archive because a gallery is done, not to park it for a week.
+
 **Cost.** CloudFront's perpetual free tier covers 1 TB/month egress and 10 M
 requests, which is the entire reason for putting everything behind one
 distribution. Realistically the bill is S3 storage plus a few cents of Lambda:
-originals move to `GLACIER_IR` after 60 days and cached ZIPs expire after 30 days
-(tag-driven, `ankaa-kind=zip`, scoped to `media/g/`).
+originals move to `GLACIER_IR` after 60 days, archived originals continue to
+`DEEP_ARCHIVE` (tag-driven, `ankaa-state=archived`), and cached ZIPs expire after
+30 days (tag-driven, `ankaa-kind=zip`, scoped to `media/g/`). For scale: 2 TB of
+originals is roughly $22/month live and $2/month fully archived. HD derivatives are
+the one thing with no lifecycle rule — they are ~26 % of each original's size and
+sit in `STANDARD` for as long as the gallery does, which is a large part of why
+archiving deletes them.
 
 **Where things are:**
 
@@ -252,7 +314,8 @@ db/selections/<gid>.json             client favourites
 db/jobs/<jid>.json                   ZIP job progress (expires at 7 days)
 db/zips/<gid>/<hash>.json            built-archive marker (parts list)
 db/downloads.json                    download notifications, capped at 300
-originals/<gid>/<pid>.<ext>          untouched uploads → GLACIER_IR at 60 days
+originals/<gid>/<pid>.<ext>          untouched uploads → GLACIER_IR at 60 days,
+                                     → DEEP_ARCHIVE once tagged ankaa-state=archived
 media/g/<gid>/v/t|w/<pid>_<rev>.webp previews (signed cookies)
 media/g/<gid>/v/c/<pid>_<rev>.webp   unmarked cover, one per gallery
 media/g/<gid>/d/hd/<pid>_<rev>.jpg   HD downloads (signed URLs)
@@ -277,4 +340,8 @@ assets/watermark.png                 the mark
 | Zipper: `Body Data is unsupported format` | `archiver` is built on `readable-stream` v4, so it is *not* an instance of `node:stream`'s `Readable` and `lib-storage` refuses it. It must be piped through a real `PassThrough`. |
 | Zipper: `not authorized to perform: s3:PutObjectTagging` | SAM's `S3CrudPolicy` does not cover tagging, but the archive upload sets `ankaa-kind=zip` for the lifecycle rule. See the extra statement on `GalleryZipperFunction`. |
 | A new watermark or admin password seems to be ignored | Both are cached for 5 minutes per warm container. Wait it out; nothing needs redeploying. |
+| API: `not authorized to perform: s3:PutObjectTagging` / `s3:RestoreObject` | Same gap as the zipper: `S3CrudPolicy` covers neither tagging nor restores, and archiving needs both. See the extra statement on `GalleryApiFunction`. |
+| *Régénérer* on an un-archived gallery keeps reporting originals in restoration | Bulk restores take up to 48 h. Check one object: `aws s3api head-object --bucket ankaa-media --key originals/<gid>/<pid>.jpg --profile bankall` — `Restore: ongoing-request="true"` means it is still working. |
+| An archived gallery's photos never come back after *Régénérer* | The 7-day restore window expired before the rebuild ran. The objects are still in `DEEP_ARCHIVE`; flip the status out of archive again to issue a fresh restore. |
+| Archived originals are still shown as `GLACIER_IR` | The lifecycle rule runs once a day and is counted from object creation. Confirm the tag landed: `aws s3api get-object-tagging --bucket ankaa-media --key originals/<gid>/<pid>.jpg --profile bankall`. |
 | Uploads fail with *"No 'Access-Control-Allow-Origin' header"* on `ankaa-media.s3…` | The uploader POSTs a presigned form straight to S3, so it is the one cross-origin call in the system and the only thing the bucket's `CorsConfiguration` exists for. Serving the admin from a host that is not in `AllowedOrigins` breaks uploads and nothing else. |
