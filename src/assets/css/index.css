@@ -1462,7 +1462,7 @@ button {
 .gallery-view__bar {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: flex-start;
+	align-items: center;
 	justify-content: space-between;
 	gap: 1rem;
 	padding: 1.6rem 0;
@@ -2252,20 +2252,25 @@ button {
 	gap: 1.2rem;
 }
 
-.admin-share__link-row {
+.admin-share__link-col {
 	display: flex;
 	gap: 0.5rem;
-	align-items: center;
+	flex-direction: column;
 }
 
-.admin-share__link-row input {
-	flex: 1;
-	min-width: 0;
+.admin-share__link-col input {
+	width: 100%;
 	padding: 0.6rem 0.8rem;
 	border: 1px solid var(--line-strong);
 	border-radius: var(--radius-sm);
 	background: var(--surface);
 	font-size: 0.85rem;
+}
+
+.admin-share__link-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
 }
 
 .admin-share__form {

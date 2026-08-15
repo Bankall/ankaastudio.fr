@@ -46,14 +46,17 @@ export function SharePanel({ gallery, publicUrl }) {
 		<div className='admin-share'>
 			<div className='admin-share__link'>
 				<label htmlFor='share-link'>Lien client</label>
-				<div className='admin-share__link-row'>
+				<div className='admin-share__link-col'>
 					<input id='share-link' type='text' readOnly value={publicUrl} onFocus={event => event.target.select()} />
-					<button type='button' className='button-secondary' onClick={handleCopy}>
-						{copied ? "Copié" : "Copier"}
-					</button>
-					<a className='button-secondary' href={publicUrl} target='_blank' rel='noreferrer'>
-						Ouvrir
-					</a>
+
+					<div className='admin-share__link-actions'>
+						<button type='button' className='button-secondary' onClick={handleCopy}>
+							{copied ? "Copié" : "Copier"}
+						</button>
+						<a className='button-secondary' href={publicUrl} target='_blank' rel='noreferrer'>
+							Ouvrir
+						</a>
+					</div>
 				</div>
 			</div>
 

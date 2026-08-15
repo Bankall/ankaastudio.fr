@@ -280,42 +280,22 @@ export function GalleryEditor() {
 
 						<div className='field'>
 							<label htmlFor='gallery-client'>Nom du client</label>
-							<input
-								id='gallery-client'
-								type='text'
-								defaultValue={gallery.clientName}
-								onBlur={event => event.target.value !== gallery.clientName && patch({ clientName: event.target.value })}
-							/>
+							<input id='gallery-client' type='text' defaultValue={gallery.clientName} onBlur={event => event.target.value !== gallery.clientName && patch({ clientName: event.target.value })} />
 						</div>
 
 						<div className='field'>
 							<label htmlFor='gallery-email'>Email du client</label>
-							<input
-								id='gallery-email'
-								type='email'
-								defaultValue={gallery.clientEmail}
-								onBlur={event => event.target.value !== gallery.clientEmail && patch({ clientEmail: event.target.value })}
-							/>
+							<input id='gallery-email' type='email' defaultValue={gallery.clientEmail} onBlur={event => event.target.value !== gallery.clientEmail && patch({ clientEmail: event.target.value })} />
 						</div>
 
 						<div className='field'>
 							<label htmlFor='gallery-shoot'>Date de séance</label>
-							<input
-								id='gallery-shoot'
-								type='date'
-								defaultValue={toDateInput(gallery.shootDate)}
-								onChange={event => patch({ shootDate: event.target.value || null })}
-							/>
+							<input id='gallery-shoot' type='date' defaultValue={toDateInput(gallery.shootDate)} onChange={event => patch({ shootDate: event.target.value || null })} />
 						</div>
 
 						<div className='field'>
 							<label htmlFor='gallery-expires'>Expire le</label>
-							<input
-								id='gallery-expires'
-								type='date'
-								defaultValue={toDateInput(gallery.expiresAt)}
-								onChange={event => patch({ expiresAt: event.target.value || null })}
-							/>
+							<input id='gallery-expires' type='date' defaultValue={toDateInput(gallery.expiresAt)} onChange={event => patch({ expiresAt: event.target.value || null })} />
 						</div>
 					</div>
 				</article>
@@ -340,8 +320,7 @@ export function GalleryEditor() {
 								onClick={async () => {
 									await patch({ password });
 									setPassword("");
-								}}
-							>
+								}}>
 								Définir
 							</button>
 							{gallery.hasPassword ?
@@ -353,18 +332,6 @@ export function GalleryEditor() {
 						{/* The record only ever holds a hash, so an existing password can be
 						    replaced but never displayed. */}
 						<p className='admin-hint'>Le mot de passe n’est pas conservé en clair : il peut être remplacé, pas relu.</p>
-					</div>
-
-					<div className='field'>
-						<label htmlFor='gallery-watermark'>Filigrane</label>
-						<select id='gallery-watermark' value={gallery.watermark} onChange={event => patch({ watermark: event.target.value })}>
-							{Object.entries(WATERMARK_LABELS).map(([value, label]) => (
-								<option key={value} value={value}>
-									{label}
-								</option>
-							))}
-						</select>
-						<p className='admin-hint'>Changer ce réglage n’affecte que les nouvelles photos. Utilisez « Régénérer » pour appliquer aux photos existantes.</p>
 					</div>
 
 					<div className='admin-toggles'>
@@ -385,6 +352,18 @@ export function GalleryEditor() {
 					</div>
 
 					<p className='admin-hint'>Sans haute définition, le client télécharge l’aperçu web filigrané photo par photo.</p>
+
+					<div className='field'>
+						<label htmlFor='gallery-watermark'>Filigrane</label>
+						<select id='gallery-watermark' value={gallery.watermark} onChange={event => patch({ watermark: event.target.value })}>
+							{Object.entries(WATERMARK_LABELS).map(([value, label]) => (
+								<option key={value} value={value}>
+									{label}
+								</option>
+							))}
+						</select>
+						<p className='admin-hint'>Changer ce réglage n’affecte que les nouvelles photos. Utilisez « Régénérer » pour appliquer aux photos existantes.</p>
+					</div>
 
 					<div className='admin-panel__footer'>
 						<button className='button-secondary' type='button' onClick={handleReprocess}>
