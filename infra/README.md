@@ -29,6 +29,9 @@ by configuration — there is no signature that can reach them.
 - `media/g/<gid>/v/*` — watermarked previews. Covered by **signed cookies**
   scoped to `Path=/media/g/<gid>/v/`, so several gallery sessions coexist in one
   browser despite CloudFront's fixed cookie names. 12 h, renewed by the client.
+  The one exception is `v/c/` — the gallery's opening image, unmarked. It is
+  derived for the cover photo only, so a gallery never exposes more than one clean
+  preview, and the API deletes it as soon as another photo becomes the cover.
 - `media/g/<gid>/d/*` — HD files and ZIPs. **Never** covered by a cookie; each
   download gets its own 5-minute signed URL from the API.
 
@@ -125,8 +128,16 @@ npm run build && ./infra/sync-site.sh
 ```
 
 The watermark is a single PNG at `assets/watermark.png` in the media bucket. The
-processor scales it to 22% of each derivative's width. A missing watermark
-degrades gracefully — galleries still process, just unmarked.
+processor stretches it across 90% of each derivative's width, centred, at 60%
+opacity: it is a download deterrent, not a signature, so it sits where it cannot
+be cropped out. Supply something wide, short and opaque — the width ratio and the
+opacity are constants in `lambda/gallery-processor/src/index.mjs`, so they can be
+retuned without re-exporting artwork. A missing watermark degrades gracefully —
+galleries still process, just unmarked.
+
+The gallery cover is the exception: it is served from its own unmarked derivative,
+which the API queues the first time a client opens the gallery. That very first
+visit sees the marked preview; every one after it sees the clean image.
 
 ### 5. Try it
 
@@ -214,6 +225,7 @@ db/jobs/<jid>.json                   ZIP job progress (expires at 7 days)
 db/zips/<gid>/<hash>.json            built-archive marker (parts list)
 originals/<gid>/<pid>.<ext>          untouched uploads → GLACIER_IR at 60 days
 media/g/<gid>/v/t|w/<pid>_<rev>.webp previews (signed cookies)
+media/g/<gid>/v/c/<pid>_<rev>.webp   unmarked cover, one per gallery
 media/g/<gid>/d/hd/<pid>_<rev>.jpg   HD downloads (signed URLs)
 media/g/<gid>/d/zip/<hash>.zip       cached archives (expire at 30 days)
 assets/watermark.png                 the mark

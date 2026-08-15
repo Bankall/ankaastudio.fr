@@ -17,6 +17,9 @@ export const viewPrefix = gid => `media/g/${gid}/v/`;
 export const mediaPrefix = gid => `media/g/${gid}/`;
 export const thumbKey = (gid, pid, rev) => `media/g/${gid}/v/t/${pid}_${rev}.webp`;
 export const webKey = (gid, pid, rev) => `media/g/${gid}/v/w/${pid}_${rev}.webp`;
+// The unmarked cover. Derived only for the photo that is currently the cover, so
+// a gallery never holds more than one clean preview of one photo.
+export const coverImageKey = (gid, pid, rev) => `media/g/${gid}/v/c/${pid}_${rev}.webp`;
 export const hdKey = (gid, pid, rev) => `media/g/${gid}/d/hd/${pid}_${rev}.jpg`;
 export const zipPrefix = gid => `media/g/${gid}/d/zip/`;
 export const zipKey = (gid, hash, suffix = "") => `media/g/${gid}/d/zip/${hash}${suffix}.zip`;
@@ -91,6 +94,20 @@ export function coverPhoto(gallery) {
 const readyPhotos = gallery => (gallery.photos ?? []).filter(photo => photo.status === "ready").sort((a, b) => a.sortIndex - b.sortIndex);
 
 /**
+ * The cover as the client will actually see it.
+ *
+ * It has to be one of the photos the client receives, so it is resolved against
+ * the ready set rather than through coverPhoto() — which may still point at a
+ * photo that is being derived — and falls back to the first, since an explicit
+ * cover is optional.
+ */
+export function readyCover(gallery) {
+	const photos = readyPhotos(gallery);
+
+	return photos.find(photo => photo.pid === gallery.coverPid) ?? photos[0] ?? null;
+}
+
+/**
  * Preview paths are root-relative, never absolute.
  *
  * These files sit behind CloudFront signed cookies, so the browser has to fetch
@@ -108,19 +125,20 @@ const previewPaths = (gallery, photo) => ({
 /**
  * What a client sees. Built field by field on purpose — the stored record holds
  * a password hash, and spreading it even once would leak it.
+ *
+ * `cleanCover` says whether the unmarked cover derivative has actually been
+ * written yet; only the caller can know, and only it may advertise the path,
+ * because a client sent one that 403s would open on a broken hero image.
  */
-export function clientProjection(gallery) {
+export function clientProjection(gallery, { cleanCover = false } = {}) {
 	const downloads = {
 		enabled: Boolean(gallery.downloadsEnabled),
 		hd: Boolean(gallery.downloadsEnabled && gallery.hdEnabled),
 		zip: Boolean(gallery.downloadsEnabled && gallery.zipEnabled)
 	};
 
-	// The cover the client is told about has to be one of the photos it actually
-	// receives, so it is resolved against the ready set rather than through
-	// coverPhoto() — which may still point at a photo that is being derived.
 	const photos = readyPhotos(gallery);
-	const cover = photos.find(photo => photo.pid === gallery.coverPid) ?? photos[0] ?? null;
+	const cover = readyCover(gallery);
 
 	return {
 		slug: gallery.slug,
@@ -129,6 +147,9 @@ export function clientProjection(gallery) {
 		shootDate: gallery.shootDate,
 		expiresAt: gallery.expiresAt,
 		coverPid: cover?.pid ?? null,
+		// Absent rather than null-and-guess: the client falls back to the marked
+		// preview, which is always there.
+		coverImage: cleanCover && cover ? `/${coverImageKey(gallery.id, cover.pid, cover.rev)}` : null,
 		downloads,
 		photos: photos.map(photo => ({
 			pid: photo.pid,

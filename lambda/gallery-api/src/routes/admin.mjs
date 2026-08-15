@@ -1,6 +1,5 @@
 // Admin routes: authentication, gallery CRUD, uploads, processing and sharing.
 
-import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { SendEmailCommand, SESv2Client } from "@aws-sdk/client-sesv2";
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 
@@ -8,11 +7,13 @@ import { clearAdminSession, issueAdminSession, issueSignedCookies, penalise, req
 import { badRequest, conflict, json, noContent, notFound, publicOrigin } from "../lib/http.mjs";
 import { galleryId, photoId, SLUG_PATTERN, slugify } from "../lib/ids.mjs";
 import { hashPassword, verifyPassword } from "../lib/passwords.mjs";
+import { invokeProcessor } from "../lib/processor.mjs";
 import { getSecrets } from "../lib/secrets.mjs";
 import { deleteKeys, deletePrefix, getJson, listKeys, putJson, s3, updateJson } from "../lib/store.mjs";
 import { bool, email, isoDate, oneOf, str, stringArray } from "../lib/validate.mjs";
 import {
 	adminProjection,
+	coverImageKey,
 	emptyIndex,
 	GALLERY_STATUSES,
 	galleryKey,
@@ -23,6 +24,7 @@ import {
 	originalKey,
 	originalPrefix,
 	pendingPhoto,
+	readyCover,
 	selectionKey,
 	sidecarKey,
 	sidecarPrefix,
@@ -34,7 +36,6 @@ import {
 	zipPrefix
 } from "../lib/galleries.mjs";
 
-const lambda = new LambdaClient({});
 const ses = new SESv2Client({});
 
 // Big enough for an uncompressed TIFF straight off a body; small enough that a
@@ -99,15 +100,17 @@ async function uniqueSlug(desired, selfId) {
 	throw conflict("Impossible de générer un identifiant d'URL unique.");
 }
 
-/** Fire-and-forget: the browser does not wait for derivatives. */
-async function invokeProcessor(payload) {
-	await lambda.send(
-		new InvokeCommand({
-			FunctionName: process.env.PROCESSOR_FUNCTION,
-			InvocationType: "Event",
-			Payload: Buffer.from(JSON.stringify(payload))
-		})
-	);
+/**
+ * The gallery's unmarked cover derivative, if it has a cover to have one for.
+ *
+ * Resolved through readyCover() so it names the same object the client route
+ * derives and serves — including the fallback to the first photo when no cover
+ * was ever chosen.
+ */
+function coverImageOf(gallery) {
+	const cover = readyCover(gallery);
+
+	return cover ? coverImageKey(gallery.id, cover.pid, cover.rev) : null;
 }
 
 async function mapWithLimit(items, limit, mapper) {
@@ -245,7 +248,19 @@ async function updateGallery({ request, params }) {
 			throw badRequest("La photo de couverture n'appartient pas à cette galerie.");
 		}
 
+		// The outgoing cover's unmarked copy has no reason to exist any more, and
+		// leaving it behind would slowly turn "one clean preview per gallery" into
+		// one per photo that was ever the cover. The new cover's is derived lazily,
+		// on the first client read.
+		const outgoing = coverImageOf(gallery);
+
 		gallery.coverPid = body.coverPid;
+
+		const incoming = coverImageOf(gallery);
+
+		if (outgoing && outgoing !== incoming) {
+			await deleteKeys([outgoing]);
+		}
 	}
 
 	// "" clears the password, a string sets it, undefined leaves it alone.
@@ -577,6 +592,9 @@ async function deletePhoto({ request, params }) {
 	await deleteKeys([
 		thumbKey(gallery.id, photo.pid, photo.rev),
 		webKey(gallery.id, photo.pid, photo.rev),
+		// Only exists if this photo was the cover, and deleting a key that is not
+		// there costs nothing.
+		coverImageKey(gallery.id, photo.pid, photo.rev),
 		hdKey(gallery.id, photo.pid, photo.rev),
 		originalKey(gallery.id, photo.pid, photo.extension),
 		sidecarKey(gallery.id, photo.pid)
@@ -605,7 +623,14 @@ async function reprocess({ request, params }) {
 
 	const stale = [];
 	for (const photo of gallery.photos) {
-		stale.push(thumbKey(gallery.id, photo.pid, photo.rev), webKey(gallery.id, photo.pid, photo.rev), hdKey(gallery.id, photo.pid, photo.rev));
+		stale.push(
+			thumbKey(gallery.id, photo.pid, photo.rev),
+			webKey(gallery.id, photo.pid, photo.rev),
+			// The cover's clean copy is rev-suffixed like everything else, so the new
+			// rev needs a new one; the client read that follows queues it.
+			coverImageKey(gallery.id, photo.pid, photo.rev),
+			hdKey(gallery.id, photo.pid, photo.rev)
+		);
 		photo.rev += 1;
 		photo.status = "processing";
 		// Dates the new attempt, so a reconcile that lands while these are in flight

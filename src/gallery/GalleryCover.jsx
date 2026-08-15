@@ -6,12 +6,14 @@ import { useEffect, useRef, useState } from "react";
  *
  * This is the one photo worth loading eagerly — it is the first thing the client
  * sees, so it skips the lazy gate the grid tiles use and asks for priority, while
- * its LQIP holds the frame so the title never lands on a bare background.
+ * its LQIP holds the frame so the title never lands on a bare background. It also
+ * takes its `src` from the caller rather than from the photo, because the opening
+ * image is served unmarked while the same photo's grid tile is not.
  *
  * A gallery whose photos are all still being derived has no cover to show; the
  * section then falls back to type on the page's own dark ground.
  */
-export function GalleryCover({ photo, eyebrow, title, meta, notice, photosId }) {
+export function GalleryCover({ photo, src, eyebrow, title, meta, notice, photosId }) {
 	const imageRef = useRef(null);
 	const [loaded, setLoaded] = useState(false);
 
@@ -33,7 +35,7 @@ export function GalleryCover({ photo, eyebrow, title, meta, notice, photosId }) 
 					<img
 						ref={imageRef}
 						className='gallery-cover__image'
-						src={photo.web}
+						src={src ?? photo.web}
 						alt=''
 						fetchPriority='high'
 						decoding='async'

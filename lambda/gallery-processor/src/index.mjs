@@ -10,6 +10,9 @@
 //   media/g/<gid>/v/w/<pid>_<rev>.webp   2048px  watermarked preview
 //   media/g/<gid>/d/hd/<pid>_<rev>.jpg   full    download (clean unless mode=all)
 //   db/galleries/<gid>/photos/<pid>.json         sidecar, incl. inline LQIP
+//
+// A `variant: "cover"` invocation instead writes only:
+//   media/g/<gid>/v/c/<pid>_<rev>.webp   2048px  unmarked, for the gallery cover
 
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import exifReader from "exif-reader";
@@ -23,9 +26,14 @@ const THUMB_WIDTH = 600;
 const WEB_WIDTH = 2048;
 const HD_MAX_EDGE = 6000;
 
-// Watermark occupies this share of the derivative's width, inset by this margin.
-const WATERMARK_WIDTH_RATIO = 0.22;
-const WATERMARK_MARGIN_RATIO = 0.03;
+// The mark spans nearly the whole frame — it is a download deterrent, not a
+// signature — but stops short of the edges, because the PNG carries no safe zone
+// of its own and artwork bleeding off the frame looks like a mistake.
+const WATERMARK_WIDTH_RATIO = 0.9;
+
+// Applied on top of whatever alpha the PNG already carries, so the mark can be
+// re-tuned here without re-exporting artwork.
+const WATERMARK_OPACITY = 0.6;
 
 const ALLOWED_FORMATS = new Set(["jpeg", "jpg", "png", "webp", "tiff", "heif", "avif"]);
 
@@ -46,7 +54,20 @@ let watermarkSource;
 let watermarkEtag = null;
 let watermarkExpiresAt = 0;
 let watermarkInFlight = null;
+
+// Overlays are keyed by both dimensions of the frame they cover, so a batch of
+// mixed aspect ratios would otherwise pile up one full-width PNG per photo.
+// Oldest evicted first; a run of similar photos keeps hitting the last few.
+const OVERLAY_CACHE_MAX = 8;
 const overlayCache = new Map();
+
+function cacheOverlay(key, overlay) {
+	if (overlayCache.size >= OVERLAY_CACHE_MAX) {
+		overlayCache.delete(overlayCache.keys().next().value);
+	}
+
+	overlayCache.set(key, overlay);
+}
 
 async function fetchWatermarkSource() {
 	try {
@@ -93,9 +114,15 @@ async function loadWatermarkSource() {
 }
 
 /**
- * A composite descriptor placing the mark bottom-right.
+ * A composite descriptor stretching the mark across the derivative, centred.
  *
- * Pre-scaled per target width and cached in module scope, so a warm container
+ * The mark is a download deterrent rather than an artist's signature — that
+ * belongs in Lightroom — so it spans most of the width in the middle of the
+ * frame, where nothing can be cropped around it. It is scaled up when the source
+ * PNG is narrower than the derivative; `fit: "inside"` keeps its aspect ratio
+ * and, on a frame wider than the mark itself, stops it overflowing the height.
+ *
+ * Pre-scaled per derivative size and cached in module scope, so a warm container
  * resizes the logo once rather than once per photo.
  */
 async function watermarkOverlay(width, height) {
@@ -105,23 +132,45 @@ async function watermarkOverlay(width, height) {
 		return null;
 	}
 
-	if (!overlayCache.has(width)) {
-		const target = Math.max(1, Math.round(width * WATERMARK_WIDTH_RATIO));
-		const resized = await sharp(source)
-			.resize({ width: target, fit: "inside", withoutEnlargement: true })
+	const cacheKey = `${width}x${height}`;
+
+	if (!overlayCache.has(cacheKey)) {
+		const scaled = await sharp(source)
+			.resize({ width: Math.max(1, Math.round(width * WATERMARK_WIDTH_RATIO)), height, fit: "inside" })
+			.ensureAlpha()
 			.png()
 			.toBuffer({ resolveWithObject: true });
 
-		overlayCache.set(width, resized);
+		// `dest-in` keeps the mark only where the mask has alpha, which for a
+		// uniform mask means multiplying the mark's own alpha by WATERMARK_OPACITY.
+		// sharp has no opacity option on a composite, and dimming the colour
+		// channels instead would grey the artwork rather than fade it.
+		const faded = await sharp(scaled.data)
+			.composite([
+				{
+					input: {
+						create: {
+							width: scaled.info.width,
+							height: scaled.info.height,
+							channels: 4,
+							background: { r: 0, g: 0, b: 0, alpha: WATERMARK_OPACITY }
+						}
+					},
+					blend: "dest-in"
+				}
+			])
+			.png()
+			.toBuffer({ resolveWithObject: true });
+
+		cacheOverlay(cacheKey, faded);
 	}
 
-	const overlay = overlayCache.get(width);
-	const margin = Math.round(width * WATERMARK_MARGIN_RATIO);
+	const overlay = overlayCache.get(cacheKey);
 
 	return {
 		input: overlay.data,
-		left: Math.max(0, width - overlay.info.width - margin),
-		top: Math.max(0, height - overlay.info.height - margin)
+		left: Math.max(0, Math.round((width - overlay.info.width) / 2)),
+		top: Math.max(0, Math.round((height - overlay.info.height) / 2))
 	};
 }
 
@@ -181,7 +230,7 @@ async function writeSidecar(gid, pid, sidecar) {
 // --- handler ---------------------------------------------------------------
 
 export const handler = async event => {
-	const { gid, pid, extension, originalName = "", watermark = "preview", rev = 1 } = event ?? {};
+	const { gid, pid, extension, originalName = "", watermark = "preview", rev = 1, variant = "full" } = event ?? {};
 
 	if (!gid || !pid || !extension) {
 		throw new Error("Payload must include gid, pid and extension.");
@@ -210,6 +259,24 @@ export const handler = async event => {
 
 		if (!width || !height) {
 			throw new Error("Could not determine image dimensions.");
+		}
+
+		// The gallery's opening image is the one photo shown unmarked: it is the
+		// client's first impression, and a mark centred over it is the whole page.
+		// It is a job of its own because only the API knows which photo is the
+		// cover, and that can change long after the photo was derived.
+		if (variant === "cover") {
+			const cover = await base
+				.clone()
+				.resize({ width: WEB_WIDTH, fit: "inside", withoutEnlargement: true })
+				.webp({ quality: 82, effort: 4 })
+				.toBuffer();
+
+			await putDerivative(`media/g/${gid}/v/c/${pid}_${rev}.webp`, cover, "image/webp");
+
+			console.info("Derived clean cover", { gid, pid, rev, bytes: cover.length });
+
+			return { ok: true, pid, rev, variant };
 		}
 
 		const markPreviews = watermark === "preview" || watermark === "all";
@@ -290,7 +357,14 @@ export const handler = async event => {
 
 		return { ok: true, pid, rev };
 	} catch (error) {
-		console.error("Processing failed", { gid, pid, rev, error: error.message });
+		console.error("Processing failed", { gid, pid, rev, variant, error: error.message });
+
+		// A cover job derives nothing the gallery depends on — the photo is already
+		// processed — so a failure there must not overwrite a healthy sidecar with a
+		// failed one. The client falls back to the marked preview instead.
+		if (variant === "cover") {
+			throw error;
+		}
 
 		// A failed sidecar is deliberate: reconcile surfaces it as a retryable
 		// tile in the admin grid instead of the photo vanishing silently.

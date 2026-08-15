@@ -7,11 +7,12 @@ import { hasGallerySession, isAdmin, issueGallerySession, issueSignedCookies, pe
 import { badRequest, forbidden, HttpError, json, notFound, publicOrigin, redirect } from "../lib/http.mjs";
 import { jobId as newJobId } from "../lib/ids.mjs";
 import { verifyPassword } from "../lib/passwords.mjs";
+import { invokeProcessor } from "../lib/processor.mjs";
 import { getSecrets } from "../lib/secrets.mjs";
 import { getJson, objectExists, putJson, updateJson } from "../lib/store.mjs";
 import { signedUrl } from "../lib/cfsign.mjs";
 import { str, stringArray } from "../lib/validate.mjs";
-import { clientProjection, emptyIndex, galleryKey, hdKey, INDEX_KEY, isExpired, jobKey, selectionKey, zipMarkerKey } from "../lib/galleries.mjs";
+import { clientProjection, coverImageKey, emptyIndex, galleryKey, hdKey, INDEX_KEY, isExpired, jobKey, readyCover, selectionKey, zipMarkerKey } from "../lib/galleries.mjs";
 
 const lambda = new LambdaClient({});
 
@@ -74,9 +75,49 @@ async function resolveGallery(request, slug) {
 	return gallery;
 }
 
-function manifest(gallery) {
+/**
+ * Whether the cover can be shown unmarked, queueing that derivative if not.
+ *
+ * Checked here rather than tracked on the record because the cover is a moving
+ * target — it changes with `coverPid`, with a reprocess that bumps revs, and with
+ * the deletion of whichever photo was standing in as the fallback — and one HEAD
+ * on the way to building a manifest is cheaper than keeping a flag honest across
+ * all of those. Missing simply means this visitor sees the marked preview while
+ * the derive it just triggered catches up.
+ */
+async function cleanCoverReady(gallery) {
+	const cover = readyCover(gallery);
+
+	// Nothing is marked in the first place, so the ordinary preview is already the
+	// clean image and a second copy of it would be waste.
+	if (!cover || gallery.watermark === "none") {
+		return false;
+	}
+
+	try {
+		if (await objectExists(coverImageKey(gallery.id, cover.pid, cover.rev))) {
+			return true;
+		}
+
+		await invokeProcessor({
+			gid: gallery.id,
+			pid: cover.pid,
+			extension: cover.extension,
+			rev: cover.rev,
+			variant: "cover"
+		});
+	} catch (error) {
+		// Purely cosmetic, so nothing here may take the gallery down with it: it
+		// still opens, it just opens marked.
+		console.warn("Clean cover unavailable", { gid: gallery.id, pid: cover.pid, error: error.message });
+	}
+
+	return false;
+}
+
+async function manifest(gallery) {
 	return {
-		gallery: clientProjection(gallery),
+		gallery: clientProjection(gallery, { cleanCover: await cleanCoverReady(gallery) }),
 		// Lets the client refresh signed cookies just before they lapse instead of
 		// discovering the fact through a wall of broken images.
 		signedUntil: Math.floor(Date.now() / 1000) + SIGNED_COOKIE_TTL_SECONDS
@@ -91,7 +132,7 @@ async function authenticate({ request, params }) {
 
 	if (!gallery.password) {
 		// Open gallery: still hand out signed cookies, or nothing would load.
-		return json(200, manifest(gallery), { cookies: await issueGallerySession(gallery.id, origin) });
+		return json(200, await manifest(gallery), { cookies: await issueGallerySession(gallery.id, origin) });
 	}
 
 	const password = str(request.body?.password, "mot de passe", { max: 200, required: true });
@@ -102,7 +143,7 @@ async function authenticate({ request, params }) {
 		return json(401, { error: "Mot de passe incorrect." });
 	}
 
-	return json(200, manifest(gallery), { cookies: await issueGallerySession(gallery.id, origin) });
+	return json(200, await manifest(gallery), { cookies: await issueGallerySession(gallery.id, origin) });
 }
 
 async function read({ request, params }) {
@@ -120,7 +161,7 @@ async function read({ request, params }) {
 
 	// Refresh the signing cookies on every manifest read; they are cheap and it
 	// keeps a returning visitor from ever hitting an expired policy.
-	return json(200, manifest(gallery), { cookies: await issueSignedCookies(gallery.id, origin) });
+	return json(200, await manifest(gallery), { cookies: await issueSignedCookies(gallery.id, origin) });
 }
 
 async function refresh({ request, params }) {
