@@ -33,5 +33,6 @@ fi
 
 "${AWS[@]}" s3 cp "$SRC" "s3://$BUCKET/assets/watermark.png" --content-type image/png
 
-echo "✓ Watermark installed. Galleries processed from now on will use it."
+echo "✓ Watermark installed. The processor re-reads it every 5 minutes, so galleries"
+echo "  processed after that window use it."
 echo "  To re-apply it to existing photos, use 'Retraiter la galerie' in the admin."

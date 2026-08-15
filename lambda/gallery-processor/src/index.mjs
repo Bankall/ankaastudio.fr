@@ -35,25 +35,61 @@ sharp.cache({ files: 0 });
 
 // --- watermark -------------------------------------------------------------
 
+// Caching for the container's whole life would break the one promise
+// upload-watermark.sh makes: a container that once found no mark would keep
+// deriving unmarked photos until Lambda happened to recycle it, and a replaced
+// logo would keep being ignored. One GetObject per container per five minutes is
+// nothing next to the derive it is part of.
+const WATERMARK_TTL_MS = 5 * 60 * 1000;
+
 let watermarkSource;
+let watermarkEtag = null;
+let watermarkExpiresAt = 0;
+let watermarkInFlight = null;
 const overlayCache = new Map();
 
-async function loadWatermarkSource() {
-	if (watermarkSource !== undefined) {
-		return watermarkSource;
-	}
-
+async function fetchWatermarkSource() {
 	try {
 		const result = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: WATERMARK_KEY }));
-		watermarkSource = Buffer.from(await result.Body.transformToByteArray());
+
+		// The pre-scaled overlays are derived from these bytes, so they are only
+		// valid for as long as the ETag is.
+		if (result.ETag !== watermarkEtag) {
+			overlayCache.clear();
+			watermarkEtag = result.ETag;
+		}
+
+		return Buffer.from(await result.Body.transformToByteArray());
 	} catch (error) {
 		// A missing watermark must not fail the whole derive — better an unmarked
 		// gallery than a broken one. infra/upload-watermark.sh installs it.
 		console.warn("No watermark installed; deriving without one.", { reason: error.name });
-		watermarkSource = null;
+		overlayCache.clear();
+		watermarkEtag = null;
+
+		return null;
+	}
+}
+
+async function loadWatermarkSource() {
+	if (watermarkSource !== undefined && Date.now() < watermarkExpiresAt) {
+		return watermarkSource;
 	}
 
-	return watermarkSource;
+	// The thumb and web derives run concurrently: without this they would each
+	// fetch the mark on a cold container.
+	watermarkInFlight ??= fetchWatermarkSource()
+		.then(source => {
+			watermarkSource = source;
+			watermarkExpiresAt = Date.now() + WATERMARK_TTL_MS;
+
+			return source;
+		})
+		.finally(() => {
+			watermarkInFlight = null;
+		});
+
+	return watermarkInFlight;
 }
 
 /**

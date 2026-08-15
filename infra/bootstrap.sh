@@ -69,7 +69,8 @@ set_admin_password() {
 
 if [[ "$CMD" == "password" ]]; then
 	set_admin_password
-	echo "✓ Admin password updated. No redeploy needed — the Lambda reads SSM on each cold start."
+	echo "✓ Admin password updated. No redeploy needed — the API re-reads SSM every"
+	echo "  5 minutes, so the old password stops working within that window."
 	exit 0
 fi
 

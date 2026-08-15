@@ -4,7 +4,22 @@
 // base URL to configure and no CORS preflight — and the session cookies the API
 // sets are automatically same-origin.
 
-const JSON_HEADERS = { "Content-Type": "application/json" };
+const encoder = new TextEncoder();
+
+/**
+ * Hex SHA-256 of the request body.
+ *
+ * CloudFront reaches the API through an origin access control, which signs each
+ * origin request with SigV4 — and Lambda function URLs reject unsigned payloads.
+ * CloudFront cannot hash a body it is streaming, so for anything with a body the
+ * *viewer* has to supply the hash in x-amz-content-sha256 or the signature the
+ * origin computes will not match ours.
+ */
+async function payloadHash(text) {
+	const digest = await crypto.subtle.digest("SHA-256", encoder.encode(text));
+
+	return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+}
 
 export class ApiError extends Error {
 	constructor(status, message, payload) {
@@ -22,12 +37,21 @@ export class ApiError extends Error {
  * a signed URL and we want the URL, not the bytes.
  */
 export async function request(path, { method = "GET", body, signal, redirect } = {}) {
+	const bodyText = body === undefined ? "" : JSON.stringify(body);
+	// Sent on every request, not just the ones with a body: the hash of an empty
+	// body is still the hash the origin will check against.
+	const headers = { "x-amz-content-sha256": await payloadHash(bodyText) };
+
+	if (body !== undefined) {
+		headers["Content-Type"] = "application/json";
+	}
+
 	const response = await fetch(path, {
 		method,
 		signal,
 		redirect,
-		headers: body === undefined ? undefined : JSON_HEADERS,
-		body: body === undefined ? undefined : JSON.stringify(body)
+		headers,
+		body: body === undefined ? undefined : bodyText
 	});
 
 	if (response.status === 204) {

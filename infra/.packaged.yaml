@@ -118,6 +118,10 @@ Resources:
           Transitions:
           - StorageClass: GLACIER_IR
             TransitionInDays: 60
+        - Id: expire-zip-jobs
+          Status: Enabled
+          Prefix: db/jobs/
+          ExpirationInDays: 7
         - Id: expire-zip-cache
           Status: Enabled
           Prefix: media/g/
@@ -171,7 +175,7 @@ Resources:
     Properties:
       FunctionName: ankaa-gallery-api
       CodeUri: 
-        s3://ankaa-deploy-artifacts-471112957662/ankaa-gallery/c60c147fdc8b83ae2b812fc49b6dbf78
+        s3://ankaa-deploy-artifacts-471112957662/ankaa-gallery/8771b9f0f7eac42aa21efb6bd6e0c3e3
       Handler: index.handler
       Description: Gallery API — admin CRUD, client auth, presigns, CloudFront 
         signing.
@@ -232,7 +236,7 @@ Resources:
     Properties:
       FunctionName: ankaa-gallery-processor
       CodeUri: 
-        s3://ankaa-deploy-artifacts-471112957662/ankaa-gallery/14ed05fdffbd68a91c61350f8d4f7d0d
+        s3://ankaa-deploy-artifacts-471112957662/ankaa-gallery/00f5ed93eb8a5018cd36d3df4493542d
       Handler: index.handler
       Description: Derives watermarked previews, HD JPEG and LQIP from an 
         uploaded original.
@@ -261,7 +265,7 @@ Resources:
     Properties:
       FunctionName: ankaa-gallery-zipper
       CodeUri: 
-        s3://ankaa-deploy-artifacts-471112957662/ankaa-gallery/f8888dd0bd1df3f28fb6a15470a52c3b
+        s3://ankaa-deploy-artifacts-471112957662/ankaa-gallery/d49b1cac4ced10dd6c72d2f2f76f0333
       Handler: index.handler
       Description: Streams a store-mode ZIP of a gallery selection into S3 via 
         multipart upload.
@@ -286,6 +290,11 @@ Resources:
             Fn::GetAtt:
             - ZipperDlq
             - QueueName
+      - Statement:
+        - Effect: Allow
+          Action: s3:PutObjectTagging
+          Resource:
+            Fn::Sub: arn:aws:s3:::${MediaBucketName}/media/g/*
   ApiUrlCloudFrontPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -296,6 +305,18 @@ Resources:
       Action: lambda:InvokeFunctionUrl
       Principal: cloudfront.amazonaws.com
       FunctionUrlAuthType: AWS_IAM
+      SourceArn:
+        Fn::Sub: 
+          arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+  ApiInvokeCloudFrontPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Fn::GetAtt:
+        - GalleryApiFunction
+        - Arn
+      Action: lambda:InvokeFunction
+      Principal: cloudfront.amazonaws.com
       SourceArn:
         Fn::Sub: 
           arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}

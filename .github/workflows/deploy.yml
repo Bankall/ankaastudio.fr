@@ -3,7 +3,7 @@ name: Deploy site and gallery stack
 on:
     push:
         branches:
-            - main
+            - master
     workflow_dispatch:
         inputs:
             deploy_stack:

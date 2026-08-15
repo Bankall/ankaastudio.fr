@@ -35,6 +35,25 @@ by configuration — there is no signature that can reach them.
 Download blocking is therefore not a UI toggle: with `downloadsEnabled: false`
 the API simply refuses to sign anything under `d/`, and nothing else can.
 
+### Two things about the API origin that will bite you
+
+The `/api/*` origin is a Lambda Function URL with `AuthType: AWS_IAM`, reached
+through an origin access control that signs every origin request with SigV4.
+Two consequences, both non-obvious and both already handled in this repo:
+
+1. **CloudFront needs two IAM grants, not one.** `lambda:InvokeFunctionUrl` on
+   its own deploys perfectly and then 403s every single request with
+   *"Forbidden. For troubleshooting Function URL authorization issues"*.
+   `lambda:InvokeFunction` is required as well — see `ApiUrlCloudFrontPermission`
+   and `ApiInvokeCloudFrontPermission`.
+2. **The browser must hash its own request bodies.** Lambda Function URLs reject
+   unsigned payloads, and CloudFront will not hash a body it is streaming, so any
+   `POST`/`PUT`/`PATCH` must carry `x-amz-content-sha256: <hex sha256 of body>`
+   or the origin rejects the signature. `src/utils/galleryApi.js` computes it for
+   every request. Anything new that talks to `/api/*` with a body must too.
+   Plain `GET`s need nothing, which is why download links can stay ordinary
+   browser navigations.
+
 ### The three Lambdas
 
 | Function            | Trigger                     | Job                                                            |
@@ -146,7 +165,7 @@ is reversible at the DNS layer.
 
 ### GitHub Actions
 
-The `site` job runs on every push to `main` and needs
+The `site` job runs on every push to `master` and needs
 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `S3_BUCKET_NAME`,
 `CLOUDFRONT_DISTRIBUTION_ID`.
 
@@ -162,7 +181,8 @@ next visitor.
 
 ## Operating it
 
-**Change the admin password** — no redeploy, the Lambda reads SSM on cold start:
+**Change the admin password** — no redeploy. The API caches SSM for five minutes,
+so the new password works — and the old one stops — within that window:
 
 ```bash
 ./infra/bootstrap.sh password
@@ -180,8 +200,8 @@ re-queues any original that never produced one.
 **Cost.** CloudFront's perpetual free tier covers 1 TB/month egress and 10 M
 requests, which is the entire reason for putting everything behind one
 distribution. Realistically the bill is S3 storage plus a few cents of Lambda:
-originals move to `GLACIER_IR` after 30 days and cached ZIPs expire after 30 days
-(tag-driven, `ankaa-kind=zip`).
+originals move to `GLACIER_IR` after 60 days and cached ZIPs expire after 30 days
+(tag-driven, `ankaa-kind=zip`, scoped to `media/g/`).
 
 **Where things are:**
 
@@ -190,9 +210,9 @@ db/index.json                        gallery list (admin list view)
 db/galleries/<gid>.json              the record — API writes, If-Match always
 db/galleries/<gid>/photos/<pid>.json processor sidecars
 db/selections/<gid>.json             client favourites
-db/jobs/<jid>.json                   ZIP job progress
+db/jobs/<jid>.json                   ZIP job progress (expires at 7 days)
 db/zips/<gid>/<hash>.json            built-archive marker (parts list)
-originals/<gid>/<pid>.<ext>          untouched uploads → GLACIER_IR at 30 days
+originals/<gid>/<pid>.<ext>          untouched uploads → GLACIER_IR at 60 days
 media/g/<gid>/v/t|w/<pid>_<rev>.webp previews (signed cookies)
 media/g/<gid>/d/hd/<pid>_<rev>.jpg   HD downloads (signed URLs)
 media/g/<gid>/d/zip/<hash>.zip       cached archives (expire at 30 days)
@@ -207,6 +227,12 @@ assets/watermark.png                 the mark
 | Photos stuck on "traitement…"             | Check the `ankaa-gallery-processor` log group; then press *Actualiser*. |
 | ZIP job reports `failed`                  | Check `ankaa-gallery-zipper` logs; the DLQ `ankaa-gallery-zipper-dlq` holds the payload. |
 | `409 Modification concurrente`            | Two admin tabs wrote at once. The retry is automatic; a visible 409 means it lost six times. |
-| Share email not delivered                 | SES sandbox — verify the recipient, or request production access.       |
+| Share email not delivered                 | `SENDER_EMAIL` is not a verified SES identity: `aws sesv2 create-email-identity --email-identity contact@ankaastudio.fr --profile bankall`. (This account already has SES production access, so recipients do *not* need verifying.) |
 | Admin login always fails after bootstrap  | `admin-password` SSM parameter written under a different `SsmPrefix` than the stack uses. |
 | `index.handler is undefined` at runtime   | The `{ "type": "commonjs" }` marker `build.sh` writes into each `build/<fn>/` is missing, so Node reads the repo root's `"type": "module"` and parses the CJS bundle as ESM. |
+| Every `/api/*` call 403s with *"Forbidden … Function URL authorization"* | CloudFront is missing the `lambda:InvokeFunction` grant. `InvokeFunctionUrl` alone is not enough. |
+| Only `POST`/`PATCH` 403 with *"signature we calculated does not match"* | The caller omitted `x-amz-content-sha256`, or sent a hash that does not match the body it actually sent. |
+| `ReservedConcurrentExecutions … below its minimum value of [10]` | A new AWS account's total concurrency quota is 10, so nothing can be reserved. Keep `PROCESSOR_RESERVED_CONCURRENCY=0` until the quota is raised. |
+| Zipper: `Body Data is unsupported format` | `archiver` is built on `readable-stream` v4, so it is *not* an instance of `node:stream`'s `Readable` and `lib-storage` refuses it. It must be piped through a real `PassThrough`. |
+| Zipper: `not authorized to perform: s3:PutObjectTagging` | SAM's `S3CrudPolicy` does not cover tagging, but the archive upload sets `ankaa-kind=zip` for the lifecycle rule. See the extra statement on `GalleryZipperFunction`. |
+| A new watermark or admin password seems to be ignored | Both are cached for 5 minutes per warm container. Wait it out; nothing needs redeploying. |

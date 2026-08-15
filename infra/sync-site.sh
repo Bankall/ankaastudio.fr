@@ -32,6 +32,8 @@ echo "→ Uploading hashed assets (immutable) ..."
 echo "→ Uploading entry files (revalidate) ..."
 "${AWS[@]}" s3 cp "$ROOT_DIR/dist/index.html" "s3://$BUCKET/index.html" \
 	--cache-control "public,max-age=0,must-revalidate" --content-type "text/html"
+"${AWS[@]}" s3 cp "$ROOT_DIR/dist/404.html" "s3://$BUCKET/404.html" \
+	--cache-control "public,max-age=0,must-revalidate" --content-type "text/html"
 "${AWS[@]}" s3 cp "$ROOT_DIR/dist/robots.txt" "s3://$BUCKET/robots.txt" \
 	--cache-control "public,max-age=86400" --content-type "text/plain"
 "${AWS[@]}" s3 cp "$ROOT_DIR/dist/sitemap.xml" "s3://$BUCKET/sitemap.xml" \
@@ -41,7 +43,7 @@ echo "→ Uploading entry files (revalidate) ..."
 echo "→ Invalidating entry points ..."
 "${AWS[@]}" cloudfront create-invalidation \
 	--distribution-id "$DIST_ID" \
-	--paths /index.html /robots.txt /sitemap.xml \
+	--paths /index.html /404.html /robots.txt /sitemap.xml \
 	--query 'Invalidation.Id' --output text
 
 echo "✓ Published to $BUCKET"

@@ -10,6 +10,8 @@
 // Invoked asynchronously by the API. Progress lands in db/jobs/<jobId>.json,
 // which the client polls.
 
+import { PassThrough } from "node:stream";
+
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import archiver from "archiver";
@@ -141,12 +143,23 @@ async function buildPart({ gid, photos, key, filename, onProgress }) {
 
 	archive.on("warning", warning => console.warn("Archive warning", { code: warning.code, message: warning.message }));
 
+	// archiver 7 is built on readable-stream v4, whose Readable is a *different*
+	// class from node:stream's, so `archive instanceof Readable` is false and
+	// lib-storage refuses the body outright ("Body Data is unsupported format").
+	// A real PassThrough in between is the entire fix. pipe() does not forward
+	// errors, hence the explicit destroy — without it a failed archive would
+	// leave the upload waiting for an end that never comes.
+	const body = new PassThrough();
+
+	archive.on("error", error => body.destroy(error));
+	archive.pipe(body);
+
 	const upload = new Upload({
 		client: s3,
 		params: {
 			Bucket: BUCKET,
 			Key: key,
-			Body: archive,
+			Body: body,
 			ContentType: "application/zip",
 			ContentDisposition: `attachment; filename="${filename.replace(/"/g, "")}"`,
 			CacheControl: "public, max-age=86400",
@@ -193,6 +206,7 @@ async function buildPart({ gid, photos, key, filename, onProgress }) {
 		await archive.finalize();
 	} catch (error) {
 		archive.abort();
+		body.destroy(error);
 		// Surface the original failure, not the abort's knock-on error.
 		await uploadDone.catch(() => {});
 

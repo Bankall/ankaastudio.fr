@@ -130,6 +130,14 @@ Resources:
                       Transitions:
                           - StorageClass: GLACIER_IR
                             TransitionInDays: 60
+                    # ZIP job documents are progress trackers a client polls for a
+                    # few minutes. Deleting a gallery does not remove them — on
+                    # purpose: a job may still be running against it — so they are
+                    # aged out here instead of accumulating forever.
+                    - Id: expire-zip-jobs
+                      Status: Enabled
+                      Prefix: db/jobs/
+                      ExpirationInDays: 7
                     # ZIPs are a rebuildable cache, keyed by content hash.
                     - Id: expire-zip-cache
                       Status: Enabled
@@ -274,8 +282,21 @@ Resources:
                       BucketName: !Ref MediaBucketName
                 - SQSSendMessagePolicy:
                       QueueName: !GetAtt ZipperDlq.QueueName
+                # S3CrudPolicy stops short of tagging, and the ankaa-kind=zip tag
+                # is what drives the expire-zip-cache lifecycle rule — without
+                # this grant the multipart upload fails outright and every
+                # archive that did land would be stored forever.
+                - Statement:
+                      - Effect: Allow
+                        Action: s3:PutObjectTagging
+                        Resource: !Sub "arn:aws:s3:::${MediaBucketName}/media/g/*"
 
     # Only CloudFront may invoke the Function URL — there is no public entry point.
+    #
+    # OAC needs BOTH grants. InvokeFunctionUrl alone looks sufficient and deploys
+    # cleanly, but every request then comes back 403 "Forbidden. For troubleshooting
+    # Function URL authorization issues": the signature validates and the identity
+    # resolves, and the authorization check still fails.
     ApiUrlCloudFrontPermission:
         Type: AWS::Lambda::Permission
         Properties:
@@ -283,6 +304,14 @@ Resources:
             Action: lambda:InvokeFunctionUrl
             Principal: cloudfront.amazonaws.com
             FunctionUrlAuthType: AWS_IAM
+            SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
+
+    ApiInvokeCloudFrontPermission:
+        Type: AWS::Lambda::Permission
+        Properties:
+            FunctionName: !GetAtt GalleryApiFunction.Arn
+            Action: lambda:InvokeFunction
+            Principal: cloudfront.amazonaws.com
             SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
 
     # -----------------------------------------------------------------------
