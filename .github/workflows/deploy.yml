@@ -1,5 +1,11 @@
 name: Deploy site and gallery stack
 
+# A region is not a credential, so it lives here rather than in a secret that has
+# to be kept in sync by hand. Mirrors AWS_REGION in infra/.env.deploy.example.
+# The AWS CLI reads this variable directly, so the raw `aws` calls inherit it too.
+env:
+    AWS_REGION: eu-west-1
+
 on:
     push:
         branches:
@@ -45,7 +51,7 @@ jobs:
               with:
                   aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
                   aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-                  aws-region: ${{ secrets.AWS_REGION }}
+                  aws-region: ${{ env.AWS_REGION }}
 
             - name: Upload static assets
               run: |
@@ -109,7 +115,7 @@ jobs:
               with:
                   aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
                   aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-                  aws-region: ${{ secrets.AWS_REGION }}
+                  aws-region: ${{ env.AWS_REGION }}
 
             - name: Package the template
               run: |
