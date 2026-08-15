@@ -24,6 +24,21 @@ const STATUS_LABELS = {
 /** ISO timestamp ⇄ the yyyy-mm-dd that <input type="date"> wants. */
 const toDateInput = value => (value ? value.slice(0, 10) : "");
 
+/**
+ * Mirrors the API's own slugify (minus its random fallback) so the field shows
+ * what the server is about to store. Accents are folded, everything else that
+ * has no place in an URL collapses into single dashes.
+ */
+const slugify = value =>
+	value
+		.normalize("NFD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 60)
+		.replace(/-+$/g, "");
+
 export function GalleryEditor() {
 	const { gid } = useParams();
 	const navigate = useNavigate();
@@ -34,6 +49,7 @@ export function GalleryEditor() {
 	const [password, setPassword] = useState("");
 	const [selection, setSelection] = useState(null);
 	const pollRef = useRef(null);
+	const slugRef = useRef(null);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -98,14 +114,52 @@ export function GalleryEditor() {
 				setGallery(payload.gallery);
 				setNotice("Enregistré.");
 				setTimeout(() => setNotice(""), 1500);
+
+				return payload.gallery;
 			} catch (failure) {
 				setError(failure.message);
+
+				return null;
 			} finally {
 				setSaving(false);
 			}
 		},
 		[gid]
 	);
+
+	// A blank slug field means no URL has been minted from this title yet, so the
+	// title can seed it. Once the field holds something the client may already
+	// have the link, and retitling must not move the gallery.
+	const handleTitleBlur = async event => {
+		const title = event.target.value;
+
+		if (title === gallery.title) {
+			return;
+		}
+
+		const derived = slugRef.current?.value.trim() === "" ? slugify(title) : "";
+		const updated = await patch(derived ? { title, slug: derived } : { title });
+
+		if (derived && updated && slugRef.current) {
+			// The API uniquifies slugs, so show what it actually stored.
+			slugRef.current.value = updated.slug;
+		}
+	};
+
+	const handleSlugBlur = async event => {
+		// Emptying the field falls back to the title rather than to the random
+		// identifier the API mints for a slug it cannot derive.
+		const desired = event.target.value.trim() === "" ? slugify(gallery.title) : event.target.value;
+
+		if (!desired || desired === gallery.slug) {
+			event.target.value = gallery.slug;
+
+			return;
+		}
+
+		const updated = await patch({ slug: desired });
+		event.target.value = updated ? updated.slug : gallery.slug;
+	};
 
 	const handleDelete = async () => {
 		if (!window.confirm(`Supprimer « ${gallery.title} » et toutes ses photos ? Cette action est définitive.`)) {
@@ -216,12 +270,12 @@ export function GalleryEditor() {
 					<div className='admin-form-grid'>
 						<div className='field'>
 							<label htmlFor='gallery-title'>Titre</label>
-							<input id='gallery-title' type='text' defaultValue={gallery.title} onBlur={event => event.target.value !== gallery.title && patch({ title: event.target.value })} />
+							<input id='gallery-title' type='text' defaultValue={gallery.title} onBlur={handleTitleBlur} />
 						</div>
 
 						<div className='field'>
 							<label htmlFor='gallery-slug'>Identifiant d’URL</label>
-							<input id='gallery-slug' type='text' defaultValue={gallery.slug} onBlur={event => event.target.value !== gallery.slug && patch({ slug: event.target.value })} />
+							<input id='gallery-slug' ref={slugRef} type='text' defaultValue={gallery.slug} onBlur={handleSlugBlur} />
 						</div>
 
 						<div className='field'>
