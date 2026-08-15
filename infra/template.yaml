@@ -115,6 +115,34 @@ Resources:
                 ServerSideEncryptionConfiguration:
                     - ServerSideEncryptionByDefault:
                           SSEAlgorithm: AES256
+            # The only cross-origin call in the whole system: the uploader POSTs a
+            # presigned form straight to S3, bypassing CloudFront, so this is the one
+            # place that needs CORS. Nothing else talks to the bucket directly —
+            # previews and downloads are same-origin through the distribution.
+            #
+            # It needs a preflight at all only because the uploader listens for
+            # upload progress: any listener on xhr.upload sets the upload listener
+            # flag, which forces an OPTIONS even for an otherwise-simple
+            # multipart/form-data POST.
+            CorsConfiguration:
+                CorsRules:
+                    - Id: browser-presigned-upload
+                      AllowedMethods: [POST]
+                      AllowedOrigins:
+                          - !Sub "https://${DomainName}"
+                          - !Sub "https://www.${DomainName}"
+                          # The distribution's own domain, where the admin stays
+                          # reachable if DNS is mid-cutover or broken. It cannot be
+                          # referenced as !GetAtt: the distribution already depends on
+                          # this bucket, so that would be a circular dependency.
+                          - "https://*.cloudfront.net"
+                      # The POST carries no header worth naming — FormData's
+                      # Content-Type is CORS-safelisted — but a header the rule does
+                      # not cover fails the preflight with no useful diagnostic.
+                      AllowedHeaders: ["*"]
+                      # One preflight covers a whole batch: every file posts to the
+                      # same bucket-root URL with the same method.
+                      MaxAge: 3600
             # Uploads land as multipart from the browser; never leave orphans behind.
             LifecycleConfiguration:
                 Rules:

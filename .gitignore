@@ -17,7 +17,10 @@ lambda/**/.env.deploy
 lambda/**/function.zip
 infra/.env.deploy
 build
+# `aws cloudformation package` output: the template plus the S3 URIs of the last
+# upload, rewritten on every deploy. CI writes the first, deploy.sh the second.
 packaged.yaml
+infra/.packaged.yaml
 .env
 
 # Editor directories and files
