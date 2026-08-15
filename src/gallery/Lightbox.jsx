@@ -81,7 +81,7 @@ export function Lightbox({ photos, index, downloads, isFavourite, showFavourites
 						</button>
 					:	null}
 
-					{downloads.hd ?
+					{downloads.enabled ?
 						<button
 							type='button'
 							className='lightbox__action lightbox__action--icon lightbox__action--download'

@@ -15,6 +15,22 @@ const SELECTION_SAVE_DELAY_MS = 800;
 // What the cover's scroll cue aims at.
 const PHOTOS_ID = "photos";
 
+/**
+ * Saves a same-origin URL under a chosen name without navigating away.
+ *
+ * `download` is only honoured same-origin, which the preview paths are — they are
+ * root-relative on purpose — so the watermarked copy lands as a file rather than
+ * replacing the gallery with a lone image.
+ */
+function saveAs(url, filename) {
+	const link = document.createElement("a");
+	link.href = url;
+	link.download = filename;
+	document.body.append(link);
+	link.click();
+	link.remove();
+}
+
 function formatDate(value) {
 	if (!value) {
 		return "";
@@ -151,17 +167,37 @@ export function GalleryPage() {
 		[]
 	);
 
+	// Memoised for its identity, not its cost: the download handler closes over the
+	// list, and a fresh array every render would rebuild every tile's callback.
+	const photos = useMemo(() => state.gallery?.photos ?? [], [state.gallery]);
+	const favourites = useMemo(() => new Set(selection), [selection]);
+	// Whether the client takes home the full-resolution file. The button is offered
+	// either way: with HD off the watermarked web preview is what they get, which is
+	// still better than a gallery with no way to keep a photo at all.
+	const hd = Boolean(state.gallery?.downloads?.hd);
+
 	const downloadPhoto = useCallback(
 		pid => {
-			// The API answers 302 to a short-lived signed URL, and the object carries
-			// Content-Disposition: attachment, so this downloads without navigating.
-			window.location.href = galleryApi.downloadUrl(slug, pid);
-		},
-		[slug]
-	);
+			if (hd) {
+				// The API answers 302 to a short-lived signed URL, and the object carries
+				// Content-Disposition: attachment, so this downloads without navigating.
+				window.location.href = galleryApi.downloadUrl(slug, pid);
 
-	const photos = state.gallery?.photos ?? [];
-	const favourites = useMemo(() => new Set(selection), [selection]);
+				return;
+			}
+
+			const index = photos.findIndex(photo => photo.pid === pid);
+
+			if (index === -1) {
+				return;
+			}
+
+			// Numbered by position rather than by pid: an opaque id makes for a
+			// baffling filename in a download folder.
+			saveAs(photos[index].web, `${slug}-${index + 1}.webp`);
+		},
+		[hd, photos, slug]
+	);
 
 	const navigate = useCallback(
 		step => {
@@ -252,7 +288,7 @@ export function GalleryPage() {
 								index={index}
 								isFavourite={favourites.has(photo.pid)}
 								showFavourites
-								showDownload={gallery.downloads.hd}
+								showDownload={gallery.downloads.enabled}
 								onOpen={setLightboxIndex}
 								onToggleFavourite={toggleFavourite}
 								onDownload={downloadPhoto}

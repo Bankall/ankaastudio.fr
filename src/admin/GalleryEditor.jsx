@@ -384,6 +384,8 @@ export function GalleryEditor() {
 						</label>
 					</div>
 
+					<p className='admin-hint'>Sans haute définition, le client télécharge l’aperçu web filigrané photo par photo.</p>
+
 					<div className='admin-panel__footer'>
 						<button className='button-secondary' type='button' onClick={handleReprocess}>
 							Régénérer les aperçus
