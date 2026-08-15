@@ -1,0 +1,23 @@
+{
+	"Version": "2012-10-17",
+	"Statement": [
+		{
+			"Sid": "SyncSiteBucket",
+			"Effect": "Allow",
+			"Action": ["s3:ListBucket", "s3:GetBucketLocation"],
+			"Resource": "arn:aws:s3:::ankaa-site"
+		},
+		{
+			"Sid": "WriteSiteObjects",
+			"Effect": "Allow",
+			"Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+			"Resource": "arn:aws:s3:::ankaa-site/*"
+		},
+		{
+			"Sid": "InvalidateEntryDocuments",
+			"Effect": "Allow",
+			"Action": ["cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"],
+			"Resource": "arn:aws:cloudfront::471112957662:distribution/E35QK7YDZ8IP6J"
+		}
+	]
+}

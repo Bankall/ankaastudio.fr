@@ -200,6 +200,18 @@ distribution. CI therefore cannot deploy the stack, by design: that needs rights
 to mint IAM roles and buckets. Run `./infra/deploy.sh` from a workstation for
 infrastructure changes.
 
+That policy is kept in `github-deploy-policy.json`. It is not applied by any
+script — the user is created once, by hand — so if you edit the file, push it:
+
+```bash
+aws iam put-user-policy --user-name ankaa-github-deploy \
+  --policy-name ankaa-site-deploy \
+  --policy-document file://infra/github-deploy-policy.json --profile bankall
+```
+
+The bucket name, distribution id and account id are hardcoded in it, so it is
+specific to this account rather than a reusable template.
+
 Note the invalidation is scoped to the four entry documents. A `/*` invalidation
 would also evict every cached photo — a needless bill and a slow gallery for the
 next visitor.
