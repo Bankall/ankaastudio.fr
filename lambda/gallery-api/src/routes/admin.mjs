@@ -15,6 +15,7 @@ import { deleteKeys, deletePrefix, getJson, listKeys, mapWithLimit, putJson, s3,
 import { bool, email, isoDate, oneOf, str, stringArray } from "../lib/validate.mjs";
 import {
 	adminProjection,
+	archivedPhoto,
 	coverImageKey,
 	emptyIndex,
 	GALLERY_STATUSES,
@@ -340,6 +341,14 @@ async function createUploads({ request, params }) {
 		throw badRequest("200 fichiers maximum par lot.");
 	}
 
+	// Uploading into an archived gallery skips the whole transition dance: S3 accepts
+	// a storage class on the POST itself, so the object lands in DEEP_ARCHIVE instead
+	// of sitting in STANDARD until the daily lifecycle pass — no transition request to
+	// pay for, and no window where a supposedly archived gallery is billed at full
+	// rate. createPresignedPost turns every Field into an exact-match condition, so a
+	// browser that drops the field gets a 403 rather than a silently expensive upload.
+	const storageClass = gallery.status === "archived" ? { "x-amz-storage-class": "DEEP_ARCHIVE" } : {};
+
 	const uploads = await Promise.all(
 		files.map(async file => {
 			const name = str(file?.name, "nom de fichier", { max: 255, required: true, allowEmpty: false });
@@ -365,7 +374,10 @@ async function createUploads({ request, params }) {
 					["content-length-range", 1, MAX_UPLOAD_BYTES],
 					["starts-with", "$Content-Type", "image/"]
 				],
-				Fields: { "Content-Type": file?.type && String(file.type).startsWith("image/") ? file.type : "image/jpeg" }
+				Fields: {
+					"Content-Type": file?.type && String(file.type).startsWith("image/") ? file.type : "image/jpeg",
+					...storageClass
+				}
 			});
 
 			return {
@@ -414,19 +426,27 @@ async function processPhotos({ request, params }) {
 
 	const { data: gallery, etag } = await loadGallery(params.gid);
 	const known = new Set(gallery.photos.map(photo => photo.pid));
+	// Deriving into an archived gallery would write the exact files archiving just
+	// deleted, into a gallery that answers 410 — and against an original the uploader
+	// has deliberately put in DEEP_ARCHIVE, so the read would fail anyway. The photo
+	// is still recorded, so it is listed, ordered and captioned like the rest and gets
+	// derived along with them whenever the gallery comes back.
+	const isArchived = gallery.status === "archived";
 
 	for (const item of queued) {
 		// A retried batch must not double the row it already added.
 		if (!known.has(item.pid)) {
-			gallery.photos.push(pendingPhoto(item, gallery.photos.length));
+			gallery.photos.push(isArchived ? archivedPhoto(item, gallery.photos.length) : pendingPhoto(item, gallery.photos.length));
 		}
 	}
 
 	await saveGallery(gallery, etag);
 
-	await Promise.all(queued.map(item => invokeProcessor({ gid: gallery.id, ...item, watermark: gallery.watermark, rev: 1 })));
+	if (!isArchived) {
+		await Promise.all(queued.map(item => invokeProcessor({ gid: gallery.id, ...item, watermark: gallery.watermark, rev: 1 })));
+	}
 
-	return json(202, { queued: queued.length });
+	return json(202, { queued: isArchived ? 0 : queued.length, archived: isArchived ? queued.length : 0 });
 }
 
 /** Progress for the uploader: which sidecars exist yet, and how they landed. */
@@ -488,11 +508,15 @@ async function reconcile({ request, params }) {
 		};
 	});
 
-	// Photos queued but not yet derived stay in the record. Rebuilding purely from
-	// sidecars would make a batch disappear from the grid until the last one
-	// landed, which is the opposite of what a progress view is for.
-	const awaiting = gallery.photos.filter(photo => photo.status === "processing" && !arrived.has(photo.pid));
-	const all = [...merged, ...awaiting];
+	// Photos with no sidecar of their own have to be carried over rather than rebuilt.
+	// For "processing" that is about the grid: rebuilding purely from sidecars would
+	// make a batch disappear until the last one landed, which is the opposite of what
+	// a progress view is for. For "archived" it is about not losing the record — every
+	// sidecar in an archived gallery has been deleted on purpose, so a rebuild from
+	// sidecars alone would empty the photo list and strand the originals with nothing
+	// left describing them, which is the one thing a rebuild cannot recreate.
+	const carried = gallery.photos.filter(photo => !arrived.has(photo.pid) && (photo.status === "processing" || photo.status === "archived"));
+	const all = [...merged, ...carried];
 
 	// Anything without an explicit position goes to the end, ordered the way a
 	// photographer's export numbering reads.
@@ -510,6 +534,12 @@ async function reconcile({ request, params }) {
 	const cutoff = Date.now() - STALE_PROCESSING_MS;
 	const inRecord = new Map(gallery.photos.map(photo => [photo.pid, photo]));
 	const requeue = [];
+	// In an archived gallery there is nothing to repair: no photo is "processing", so
+	// the stale branch never fires, and an unrecorded original is adopted as archived
+	// instead of queued. Deriving here would rebuild what archiving deleted from an
+	// original that is no longer readable — a gallery's worth of failed invocations
+	// that would then overwrite the record with failed sidecars.
+	const isArchived = gallery.status === "archived";
 
 	for (const item of originals) {
 		const photo = inRecord.get(item.pid);
@@ -522,6 +552,11 @@ async function reconcile({ request, params }) {
 			// Uploaded but never queued — the tab closed between the two calls. The
 			// original filename is only known to the browser that uploaded it, so it
 			// is lost here; the processor falls back to the pid.
+			if (isArchived) {
+				gallery.photos.push(archivedPhoto(item, gallery.photos.length));
+				continue;
+			}
+
 			gallery.photos.push(pendingPhoto(item, gallery.photos.length));
 			requeue.push({ ...item, originalName: "", rev: 1 });
 			continue;
@@ -634,6 +669,13 @@ async function deletePhoto({ request, params }) {
 async function reprocess({ request, params }) {
 	await requireAdmin(request);
 	const { data: gallery, etag } = await loadGallery(params.gid);
+
+	// Rebuilding into a gallery that still answers 410 derives files nobody can fetch
+	// and that the next save would delete again. The status change is also what starts
+	// the restore, so it has to come first either way.
+	if (gallery.status === "archived") {
+		throw conflict("Cette galerie est archivée. Repassez-la en brouillon ou en ligne pour lancer la restauration des originaux, puis régénérez les aperçus.");
+	}
 
 	// Every derive reads an original, and one in Deep Archive will not answer a GET.
 	// Checking here costs a single listing and turns what would be a gallery's worth

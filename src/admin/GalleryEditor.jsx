@@ -410,7 +410,7 @@ export function GalleryEditor() {
 
 				<article className='admin-panel admin-panel--wide'>
 					<h2 className='admin-panel__title'>Photos</h2>
-					<Uploader gid={gid} onUploaded={reconcile} />
+					<Uploader gid={gid} archived={gallery.status === "archived"} onUploaded={reconcile} />
 
 					<div className='admin-panel__toolbar'>
 						<button className='button-secondary' type='button' onClick={reconcile}>

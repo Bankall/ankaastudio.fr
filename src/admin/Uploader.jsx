@@ -46,7 +46,7 @@ async function mapWithLimit(items, limit, task) {
 	return results;
 }
 
-export function Uploader({ gid, onUploaded }) {
+export function Uploader({ gid, archived = false, onUploaded }) {
 	const [items, setItems] = useState([]);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
@@ -162,6 +162,12 @@ export function Uploader({ gid, onUploaded }) {
 				<strong>Glissez vos photos ici</strong>
 				<span>ou cliquez pour choisir des fichiers — JPEG, PNG, WebP, TIFF, HEIC. 120 Mo par fichier.</span>
 			</label>
+
+			{/* Said before the drop, not after: the tiles will come back "archivée" with
+			    no image, which reads as a failed upload unless you knew that going in. */}
+			{archived ?
+				<p className='admin-hint'>Galerie archivée : les fichiers envoyés partent directement en archive froide, sans aperçu ni fichier HD. Ils seront traités avec les autres à la sortie d’archive.</p>
+			:	null}
 
 			{items.length > 0 ?
 				<div className='admin-uploader__status'>

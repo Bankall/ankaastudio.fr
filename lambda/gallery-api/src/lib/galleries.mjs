@@ -88,6 +88,30 @@ export function pendingPhoto({ pid, extension, originalName = "" }, sortIndex, r
 	};
 }
 
+/**
+ * The record entry for a photo uploaded straight into an archived gallery.
+ *
+ * Same shape as pendingPhoto minus the queue: nothing is derived, so there is no
+ * processor to wait on and no sidecar will ever appear — which is why `queuedAt`
+ * is null rather than a date reconcile would eventually read as abandoned.
+ *
+ * `rev` still starts at 1 so that bringing the gallery back treats these exactly
+ * like every other photo: reprocess bumps them to 2 and writes the derivative
+ * keys the record already expects.
+ */
+export function archivedPhoto({ pid, extension, originalName = "" }, sortIndex) {
+	return {
+		pid,
+		rev: 1,
+		extension,
+		originalName,
+		status: "archived",
+		queuedAt: null,
+		caption: null,
+		sortIndex
+	};
+}
+
 export function isExpired(gallery, now = Date.now()) {
 	return Boolean(gallery.expiresAt) && Date.parse(gallery.expiresAt) < now;
 }

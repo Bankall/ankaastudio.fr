@@ -289,6 +289,25 @@ aperçus* once the originals are readable:
 - Restore state is read with one `ListObjectsV2` per gallery using
   `OptionalObjectAttributes: ["RestoreStatus"]`, not a `HeadObject` per photo.
 
+**Uploading into an archived gallery** is allowed and stays archived. Nothing is
+derived — `processPhotos` records the photo with `status: "archived"` and queues no
+processor, because deriving would rebuild exactly what archiving deleted, into a
+gallery that answers 410, from an original that is not readable. Instead the
+presigned POST carries `x-amz-storage-class: DEEP_ARCHIVE`, so the object lands in
+Deep Archive directly: no transition request to pay for, and no window where a
+supposedly archived gallery is billed at `STANDARD`. `createPresignedPost` turns
+every `Fields` entry into an exact-match policy condition, so an upload that omits
+the field gets a 403 rather than silently costing full rate. These photos are
+listed, ordered and captioned like any other and get derived along with the rest
+when the gallery comes back.
+
+*Actualiser* (`reconcile`) is archive-aware for the same reason: archived photos are
+carried over rather than rebuilt from sidecars — there are none, by design, and a
+rebuild from sidecars alone would empty the photo list and strand the originals with
+nothing describing them. An original it finds with no record entry is adopted as
+`archived` instead of queued. *Régénérer les aperçus* refuses outright while the
+gallery is still archived.
+
 **Minimum-duration charges.** `DEEP_ARCHIVE` bills a minimum of 180 days and
 `GLACIER_IR` 90, so archiving and immediately un-archiving still pays out the
 remainder. Archive because a gallery is done, not to park it for a week.
@@ -343,5 +362,6 @@ assets/watermark.png                 the mark
 | API: `not authorized to perform: s3:PutObjectTagging` / `s3:RestoreObject` | Same gap as the zipper: `S3CrudPolicy` covers neither tagging nor restores, and archiving needs both. See the extra statement on `GalleryApiFunction`. |
 | *Régénérer* on an un-archived gallery keeps reporting originals in restoration | Bulk restores take up to 48 h. Check one object: `aws s3api head-object --bucket ankaa-media --key originals/<gid>/<pid>.jpg --profile bankall` — `Restore: ongoing-request="true"` means it is still working. |
 | An archived gallery's photos never come back after *Régénérer* | The 7-day restore window expired before the rebuild ran. The objects are still in `DEEP_ARCHIVE`; flip the status out of archive again to issue a fresh restore. |
+| Uploads to an archived gallery 403 at S3 with *"Policy Condition failed: x-amz-storage-class"* | The browser dropped the field. `uploadToS3` forwards every entry of `presigned.fields` verbatim — if it stops doing so, uploads to archived galleries fail closed rather than landing in `STANDARD`. |
 | Archived originals are still shown as `GLACIER_IR` | The lifecycle rule runs once a day and is counted from object creation. Confirm the tag landed: `aws s3api get-object-tagging --bucket ankaa-media --key originals/<gid>/<pid>.jpg --profile bankall`. |
 | Uploads fail with *"No 'Access-Control-Allow-Origin' header"* on `ankaa-media.s3…` | The uploader POSTs a presigned form straight to S3, so it is the one cross-origin call in the system and the only thing the bucket's `CorsConfiguration` exists for. Serving the admin from a host that is not in `AllowedOrigins` breaks uploads and nothing else. |
