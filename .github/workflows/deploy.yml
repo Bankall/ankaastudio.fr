@@ -16,6 +16,11 @@ jobs:
         name: Build and publish the site
         runs-on: ubuntu-latest
 
+        # A step `if:` cannot read the `secrets` context, only `env`. Hoisting the
+        # one secret a condition depends on makes the guard below legal.
+        env:
+            CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
@@ -70,10 +75,10 @@ jobs:
             # every cached photo — a needless bill and a slow gallery afterwards.
             # Hashed asset filenames never need invalidating.
             - name: Invalidate CloudFront entry documents
-              if: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID != '' }}
+              if: ${{ env.CLOUDFRONT_DISTRIBUTION_ID != '' }}
               run: |
                   aws cloudfront create-invalidation \
-                    --distribution-id "${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}" \
+                    --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
                     --paths "/index.html" "/404.html" "/robots.txt" "/sitemap.xml"
 
     stack:
