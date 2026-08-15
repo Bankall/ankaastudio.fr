@@ -1340,18 +1340,41 @@ button {
 	object-fit: cover;
 	filter: blur(12px);
 	transform: scale(1.06);
+	/* Held until the photo has finished fading in, otherwise both layers are
+	   semi-transparent at once and the tile background shows through. */
+	transition: opacity 240ms ease-out 320ms;
 }
 
 .photo-tile__image {
 	position: relative;
 	opacity: 0;
-	transition: opacity 240ms ease-out;
+	transform: scale(1.012);
+	transition:
+		opacity 420ms ease-out,
+		transform 420ms ease-out;
 	-webkit-user-select: none;
 	user-select: none;
 }
 
+.photo-tile.is-loaded .photo-tile__placeholder {
+	opacity: 0;
+}
+
 .photo-tile.is-loaded .photo-tile__image {
 	opacity: 1;
+	transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.photo-tile__placeholder,
+	.photo-tile__image {
+		transition-duration: 1ms;
+		transition-delay: 0s;
+	}
+
+	.photo-tile__image {
+		transform: none;
+	}
 }
 
 .photo-tile__favourite {
