@@ -149,6 +149,58 @@ export function archivedPhoto({ pid, extension, originalName = "", setId = null 
 	};
 }
 
+// --- favourites ------------------------------------------------------------
+
+// A selection belongs to an email address, and a gallery link is often shared
+// between everyone who was photographed, so one document holds several lists. High
+// enough that no real shoot reaches it; there only because anyone holding the link
+// can add an address, and the document must not grow without bound.
+export const MAX_SELECTION_VISITORS = 200;
+
+/**
+ * The selections a gallery holds, one per visitor.
+ *
+ * Documents written before favourites were attributed hold a single unnamed `pids`
+ * list, which reads here as one visitor with no address: those picks were made in
+ * good faith and the photographer's panel says where they came from rather than
+ * dropping them.
+ */
+export function selectionVisitors(document) {
+	if (Array.isArray(document?.visitors)) {
+		return document.visitors;
+	}
+
+	const legacy = document?.pids ?? [];
+
+	return legacy.length > 0 ? [{ email: "", pids: legacy, createdAt: null, updatedAt: document?.updatedAt ?? null }] : [];
+}
+
+/**
+ * The address a selection is filed under.
+ *
+ * Case-folded: mail addresses are treated as case-insensitive by every provider
+ * that matters, and a client who capitalises their own name on their phone must not
+ * end up with a second, empty selection.
+ */
+export const selectionOwner = value => (value ?? "").trim().toLowerCase();
+
+/**
+ * One visitor's picks, or null when this address has never marked anything.
+ *
+ * An empty address matches nothing, not the unattributed legacy list: a visitor who
+ * has given no address has no selection, and handing them someone else's would be
+ * the one thing this whole change exists to prevent.
+ */
+export function selectionOf(document, email) {
+	const owner = selectionOwner(email);
+
+	if (!owner) {
+		return null;
+	}
+
+	return selectionVisitors(document).find(visitor => selectionOwner(visitor.email) === owner) ?? null;
+}
+
 export function isExpired(gallery, now = Date.now()) {
 	return Boolean(gallery.expiresAt) && Date.parse(gallery.expiresAt) < now;
 }

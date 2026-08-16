@@ -31,6 +31,7 @@ import {
 	pendingPhoto,
 	readyCover,
 	selectionKey,
+	selectionVisitors,
 	sidecarKey,
 	sidecarPrefix,
 	thumbKey,
@@ -956,19 +957,36 @@ async function seenDownloads({ request }) {
 	return json(200, { seenAt: await markDownloadsSeen() });
 }
 
-/** What the client marked as favourite. */
+/**
+ * What each visitor marked as favourite, one list per address.
+ *
+ * A gallery link goes to everyone who was photographed, so "the client's selection"
+ * is usually several selections — and which photo belongs to whose list is the whole
+ * reason the photographer asked. Newest first: the list someone is working on right
+ * now is the one worth reading.
+ */
 async function readSelection({ request, params }) {
 	await requireAdmin(request);
 	const stored = await getJson(selectionKey(params.gid));
 	const { data: gallery } = await loadGallery(params.gid);
-	const chosen = new Set(stored?.data?.pids ?? []);
+	const byPid = new Map(gallery.photos.map(photo => [photo.pid, photo]));
 
 	return json(200, {
-		updatedAt: stored?.data?.updatedAt ?? null,
-		photos: gallery.photos
-			.filter(photo => chosen.has(photo.pid))
-			.sort((a, b) => a.sortIndex - b.sortIndex)
-			.map(photo => ({ pid: photo.pid, originalName: photo.originalName }))
+		visitors: selectionVisitors(stored?.data)
+			.map(visitor => ({
+				// Empty for picks made before selections were attributed; the panel says so
+				// rather than inventing an owner for them.
+				email: visitor.email ?? "",
+				updatedAt: visitor.updatedAt ?? null,
+				photos: (visitor.pids ?? [])
+					.map(pid => byPid.get(pid))
+					.filter(Boolean)
+					.sort((a, b) => a.sortIndex - b.sortIndex)
+					.map(photo => ({ pid: photo.pid, originalName: photo.originalName }))
+			}))
+			// A list whose photos have all been deleted has nothing left to say.
+			.filter(visitor => visitor.photos.length > 0)
+			.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
 	});
 }
 

@@ -1459,8 +1459,8 @@ button {
 	padding: 0 var(--gallery-gutter) 5rem;
 }
 
-/* Sets, as tabs. Scrolls sideways rather than wrapping: eight sets must not push
-   the photographs down by three rows on a phone. */
+/* Sets and favourites, as tabs. Scrolls sideways rather than wrapping: eight sets
+   must not push the photographs down by three rows on a phone. */
 .gallery-tabs {
 	display: flex;
 	gap: 0.35rem;
@@ -1506,6 +1506,22 @@ button {
 .gallery-tabs__count {
 	font-size: 0.72rem;
 	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+}
+
+/* Set apart from the sets it sits next to, since it is not one of them: rose, and
+   underlined in rose when it is the open tab. */
+.gallery-tabs__tab--favourite .heart-icon {
+	width: 0.9rem;
+	height: 0.9rem;
+	/* The row aligns on the baseline, which for an svg is its bottom edge — nudged
+	   back up so the heart sits with the text rather than under it. */
+	align-self: center;
+	color: var(--favourite);
+}
+
+.gallery-tabs__tab--favourite.is-active {
+	border-color: var(--favourite);
 }
 
 .gallery-view__bar {
@@ -2114,6 +2130,10 @@ button {
 	margin-bottom: 1.6rem;
 }
 
+.admin-section__actions {
+	max-width: 100%;
+}
+
 .admin-section__title {
 	margin: 0;
 	font-family: var(--font-display);
@@ -2339,6 +2359,14 @@ button {
 	font-size: 0.85rem;
 	color: var(--muted);
 	columns: 2;
+}
+
+/* One block per person. Ruled apart rather than merely spaced: two lists of file
+   names running together is exactly the confusion the addresses are there to end. */
+.admin-selection__visitor + .admin-selection__visitor {
+	margin-top: 0.9rem;
+	padding-top: 0.9rem;
+	border-top: 1px solid var(--line);
 }
 
 /* --- uploader ------------------------------------------------------------ */
@@ -2713,5 +2741,22 @@ button {
 
 	.admin-selection__list {
 		columns: 1;
+	}
+
+	/* The toggle sits mid-nav, so a panel anchored to it can only spill off the left
+	   edge. Hang it off the nav instead, gutter to gutter. */
+	.admin-nav {
+		position: relative;
+	}
+
+	.admin-feed {
+		position: static;
+	}
+
+	.admin-feed__panel {
+		left: 1rem;
+		right: 1rem;
+		width: auto;
+		max-height: min(26rem, calc(100vh - 6rem));
 	}
 }

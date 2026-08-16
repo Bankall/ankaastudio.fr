@@ -1,12 +1,18 @@
 import { useRef } from "react";
+import { HeartIcon } from "./HeartIcon.jsx";
 
 /**
- * The gallery's sets, as a row of tabs.
+ * The gallery's tabs: its sets, and the visitor's favourites among them.
  *
- * Nothing is rendered for a single set: a lone tab is a label, and the gallery
- * looked like one series before sets existed. `null` is a real id here — it is the
- * group of photos that belong to no set — so it travels as-is rather than as a
- * falsy stand-in for "none selected".
+ * Favourites arrive as one more tab rather than as a filter of their own, and the
+ * sets stay in the row while it is open: the selection is another way through the
+ * same photographs, so it belongs where the client already looks for one, and
+ * getting back out is a click on the set they came from.
+ *
+ * Nothing is rendered for a single tab, which is what an empty gallery comes to: a
+ * lone tab is a label. `null` is a real id here — it is the group of photos that
+ * belong to no set — so it travels as-is rather than as a falsy stand-in for "none
+ * selected".
  *
  * Real tab semantics, which means the arrow keys have to work and only the current
  * tab may be in the tab order: with a dozen sets, tabbing through every one of them
@@ -16,15 +22,15 @@ import { useRef } from "react";
  * click: a client who has scrolled deep into one set and picks another would
  * otherwise land halfway down a grid that has just been replaced.
  */
-export function SetTabs({ sets, activeId, panelId, sectionId, onSelect }) {
+export function SetTabs({ tabs, activeId, panelId, sectionId, onSelect }) {
 	const listRef = useRef(null);
 
-	if (sets.length < 2) {
+	if (tabs.length < 2) {
 		return null;
 	}
 
 	const focusAt = index => {
-		const target = sets[Math.max(0, Math.min(sets.length - 1, index))];
+		const target = tabs[Math.max(0, Math.min(tabs.length - 1, index))];
 
 		onSelect(target.id);
 		// The freshly selected tab is the only focusable one, so hand the focus over
@@ -46,7 +52,7 @@ export function SetTabs({ sets, activeId, panelId, sectionId, onSelect }) {
 	};
 
 	const handleKeyDown = event => {
-		const current = sets.findIndex(set => set.id === activeId);
+		const current = tabs.findIndex(tab => tab.id === activeId);
 		const step =
 			event.key === "ArrowLeft" ? -1
 			: event.key === "ArrowRight" ? 1
@@ -54,11 +60,11 @@ export function SetTabs({ sets, activeId, panelId, sectionId, onSelect }) {
 
 		if (step !== 0) {
 			// Wraps, as a tablist is expected to.
-			focusAt((current + step + sets.length) % sets.length);
+			focusAt((current + step + tabs.length) % tabs.length);
 		} else if (event.key === "Home") {
 			focusAt(0);
 		} else if (event.key === "End") {
-			focusAt(sets.length - 1);
+			focusAt(tabs.length - 1);
 		} else {
 			return;
 		}
@@ -67,22 +73,30 @@ export function SetTabs({ sets, activeId, panelId, sectionId, onSelect }) {
 	};
 
 	return (
-		<div className='gallery-tabs' role='tablist' aria-label='Ensembles de la galerie' ref={listRef} onKeyDown={handleKeyDown}>
-			{sets.map(set => {
-				const selected = set.id === activeId;
+		<div className='gallery-tabs' role='tablist' aria-label='Ensembles de la galerie et favoris' ref={listRef} onKeyDown={handleKeyDown}>
+			{tabs.map(tab => {
+				const selected = tab.id === activeId;
 
 				return (
 					<button
-						key={set.id ?? "default"}
+						key={tab.id ?? "default"}
 						type='button'
 						role='tab'
-						id={`set-tab-${set.id ?? "default"}`}
+						id={`set-tab-${tab.id ?? "default"}`}
 						aria-selected={selected}
 						aria-controls={panelId}
 						tabIndex={selected ? 0 : -1}
-						className={`gallery-tabs__tab${selected ? " is-active" : ""}`}
-						onClick={() => handleClick(set.id)}>
-						<span className='gallery-tabs__title'>{set.title}</span>
+						className={`gallery-tabs__tab${selected ? " is-active" : ""}${tab.favourite ? " gallery-tabs__tab--favourite" : ""}`}
+						onClick={() => handleClick(tab.id)}>
+						{/* Filled once there is something in it: the heart is the only part of
+						    this row that says whether the visitor has picked anything yet. */}
+						{tab.favourite ?
+							<HeartIcon filled={selected || tab.count > 0} />
+						:	null}
+						<span className='gallery-tabs__title'>{tab.title}</span>
+						{tab.count > 0 ?
+							<span className='gallery-tabs__count'>{tab.count}</span>
+						:	null}
 					</button>
 				);
 			})}

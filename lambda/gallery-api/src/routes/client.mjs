@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 
 import { hasGallerySession, isAdmin, issueGallerySession, issueSignedCookies, penalise, requireGalleryAccess, SIGNED_COOKIE_TTL_SECONDS } from "../lib/auth.mjs";
-import { downloadEvent, recordDownload } from "../lib/downloads.mjs";
+import { downloadEvent, favouriteEvent, recordEvent } from "../lib/downloads.mjs";
 import { badRequest, forbidden, HttpError, json, noContent, notFound, publicOrigin, redirect } from "../lib/http.mjs";
 import { jobId as newJobId } from "../lib/ids.mjs";
 import { emailButton, emailLayout, emailNote, emailParagraph, escapeHtml, sendEmail } from "../lib/mailer.mjs";
@@ -24,9 +24,13 @@ import {
 	INDEX_KEY,
 	isExpired,
 	jobKey,
+	MAX_SELECTION_VISITORS,
 	photoDownloads,
 	readyCover,
 	selectionKey,
+	selectionOf,
+	selectionOwner,
+	selectionVisitors,
 	setOf,
 	zipMarkerKey
 } from "../lib/galleries.mjs";
@@ -495,7 +499,7 @@ async function downloadZip({ request, params }) {
 		emailed = false;
 	}
 
-	await recordDownload(downloadEvent({ gallery, email: recipient, kind: job.kind, count: ordered.length, setTitle: scopeTitle }));
+	await recordEvent(downloadEvent({ gallery, email: recipient, kind: job.kind, count: ordered.length, setTitle: scopeTitle }));
 
 	return json(cached ? 200 : 202, {
 		status: job.status,
@@ -617,7 +621,7 @@ async function logDownload({ request, params }) {
 
 	assertPhotoDownloadable(gallery, photo);
 
-	await recordDownload(
+	await recordEvent(
 		downloadEvent({
 			gallery,
 			email: recipient,
@@ -632,34 +636,139 @@ async function logDownload({ request, params }) {
 
 // --- favourites ------------------------------------------------------------
 
+/**
+ * Tells the photographer that a new person has started picking.
+ *
+ * Sent to the studio's own address — the one every gallery mail is sent from — and
+ * mirrored into the activity feed, so the news arrives whether or not the inbox is
+ * being watched. A gallery link says nothing about who is behind it, and a shoot
+ * with three models produces three of these: that is the point.
+ *
+ * The caller swallows whatever this throws: the favourite is already stored, and a
+ * notification that does not arrive is the photographer's problem to notice, never a
+ * failed save for the client.
+ */
+async function announceSelection({ gallery, email, count, origin }) {
+	await recordEvent(favouriteEvent({ gallery, email, count }));
+
+	const studio = process.env.SENDER_EMAIL;
+
+	if (!studio) {
+		return;
+	}
+
+	const link = `${origin}/admin/galleries/${gallery.id}`;
+	const who = gallery.clientName ? `${gallery.title} · ${gallery.clientName}` : gallery.title;
+
+	await sendEmail({
+		to: studio,
+		subject: `Nouvelle sélection — ${gallery.title}`,
+		text: [
+			`${email} a commencé une sélection dans « ${gallery.title} ».`,
+			"",
+			`Galerie : ${who}`,
+			`Photos marquées pour l’instant : ${count}`,
+			"",
+			link,
+			"",
+			"Ankaa Studio"
+		].join("\n"),
+		html: emailLayout({
+			label: "Nouvelle sélection",
+			heading: "Une sélection a commencé",
+			preview: `${email} marque ses photos dans « ${gallery.title} ».`,
+			origin,
+			inner: [
+				emailParagraph(`<strong>${escapeHtml(email)}</strong> vient de marquer ses premières photos dans ${escapeHtml(who)}.`),
+				emailButton(link, "Voir la sélection"),
+				emailNote("Vous ne recevrez qu’un seul message par personne : la sélection continue d’évoluer dans la galerie.")
+			].join("")
+		})
+	});
+}
+
+/**
+ * Stores one visitor's favourites.
+ *
+ * The address is the identity: a gallery link is handed to everyone who was
+ * photographed, and two people hearting different photos must each keep their own
+ * list rather than take turns overwriting one. It is never verified — as with a
+ * download, someone who types nonsense simply gets their own list under that name.
+ */
 async function saveSelection({ request, params }) {
 	const gallery = await resolveGallery(request, params.slug);
 	await requireGalleryAccess(request, gallery);
 
+	const visitor = emailField(request.body?.email, "email", { required: true });
+	const owner = selectionOwner(visitor);
 	const pids = stringArray(request.body?.pids, "photos", { max: MAX_ZIP_PHOTOS }) ?? [];
 	const valid = new Set(gallery.photos.map(photo => photo.pid));
 	const filtered = pids.filter(pid => valid.has(pid));
+	const now = new Date().toISOString();
+	// Whether the gallery had ever heard from this address. Decided inside the
+	// mutation rather than from a read before it: a lost conditional write runs the
+	// mutation again, and the answer has to be the one the successful attempt saw.
+	let firstTime = false;
 
 	await updateJson(
 		selectionKey(gallery.id),
-		current => ({
-			...current,
-			gid: gallery.id,
-			pids: filtered,
-			updatedAt: new Date().toISOString()
-		}),
-		{ fallback: () => ({ gid: gallery.id, pids: [] }) }
+		current => {
+			// Folded through selectionVisitors, so a document that predates attributed
+			// selections is migrated by the first write that touches it — and its
+			// unnamed list survives as a visitor of its own.
+			const visitors = selectionVisitors(current);
+			const existing = visitors.find(entry => selectionOwner(entry.email) === owner);
+			firstTime = !existing;
+
+			// Field by field, with no spread of `current`: the legacy top-level `pids` is
+			// now one of the visitors above, and it must not stay behind as a second copy
+			// that every later read would fold back in.
+			return {
+				gid: gallery.id,
+				visitors: [{ email: owner, pids: filtered, createdAt: existing?.createdAt ?? now, updatedAt: now }, ...visitors.filter(entry => entry !== existing)]
+					// Most recently active first, so the cap drops the coldest list.
+					.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
+					.slice(0, MAX_SELECTION_VISITORS),
+				updatedAt: now
+			};
+		},
+		{ fallback: () => ({ gid: gallery.id, visitors: [] }) }
 	);
+
+	// An empty first save is not news: it is a returning visitor whose list has been
+	// emptied, or a client who unpicked their last photo before it ever arrived.
+	if (firstTime && filtered.length > 0) {
+		try {
+			await announceSelection({ gallery, email: visitor, count: filtered.length, origin: publicOrigin(request) });
+		} catch (error) {
+			console.warn("Selection notice not sent", { gid: gallery.id, error: error.message });
+		}
+	}
 
 	return json(200, { pids: filtered });
 }
 
+/**
+ * One visitor's favourites.
+ *
+ * The address travels in the query because this is a read; it is the same address
+ * the browser remembers for downloads. Without one there is nothing to answer with:
+ * a visitor who has not said who they are has no selection, and must certainly not
+ * be handed somebody else's.
+ */
 async function readSelection({ request, params }) {
 	const gallery = await resolveGallery(request, params.slug);
 	await requireGalleryAccess(request, gallery);
+
+	const visitor = emailField(request.query.get("email"), "email");
+
+	if (!visitor) {
+		return json(200, { email: "", pids: [] });
+	}
+
 	const stored = await getJson(selectionKey(gallery.id));
 
-	return json(200, { pids: stored?.data?.pids ?? [] });
+	return json(200, { email: visitor, pids: selectionOf(stored?.data, visitor)?.pids ?? [] });
 }
 
 export const clientRoutes = [

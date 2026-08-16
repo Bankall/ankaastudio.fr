@@ -86,8 +86,11 @@ export const galleryApi = {
 	unlock: (slug, password) => request(`/api/g/${encodeURIComponent(slug)}/auth`, { method: "POST", body: { password } }),
 	// Re-signs the viewing cookies before the current policy lapses.
 	refresh: slug => request(`/api/g/${encodeURIComponent(slug)}/refresh`, { method: "POST" }),
-	readSelection: slug => request(`/api/g/${encodeURIComponent(slug)}/selection`),
-	saveSelection: (slug, pids) => request(`/api/g/${encodeURIComponent(slug)}/selection`, { method: "PUT", body: { pids } }),
+	// Favourites belong to a person, not to the link: a gallery is shared between
+	// everyone who was photographed, so the visitor's email is what tells one
+	// selection from another. Without an address there is nothing to read.
+	readSelection: (slug, email) => request(`/api/g/${encodeURIComponent(slug)}/selection?email=${encodeURIComponent(email)}`),
+	saveSelection: (slug, email, pids) => request(`/api/g/${encodeURIComponent(slug)}/selection`, { method: "PUT", body: { email, pids } }),
 	// The email is what the archive link is sent to, and what names the download in
 	// the photographer's feed. `setId` scopes the archive to one tab — null being the
 	// ungrouped one, so it is sent only when it is actually meant, never as a default.

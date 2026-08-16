@@ -466,25 +466,29 @@ export function GalleryEditor() {
 							Actualiser
 						</button>
 						<button className='button-secondary' type='button' onClick={loadSelection}>
-							Voir la sélection du client
+							Voir les sélections
 						</button>
 					</div>
 
+					{/* One list per person: a gallery link goes to everyone who was
+					    photographed, and which photo is on whose list is the point. */}
 					{selection ?
 						<div className='admin-selection'>
-							{selection.photos.length === 0 ?
-								<p className='admin-hint'>Le client n’a encore rien sélectionné.</p>
-							:	<>
-									<p className='admin-hint'>
-										{selection.photos.length} photo{selection.photos.length > 1 ? "s" : ""} sélectionnée{selection.photos.length > 1 ? "s" : ""}
-										{selection.updatedAt ? ` le ${new Date(selection.updatedAt).toLocaleString("fr-FR")}` : ""} :
-									</p>
-									<ul className='admin-selection__list'>
-										{selection.photos.map(photo => (
-											<li key={photo.pid}>{photo.originalName || photo.pid}</li>
-										))}
-									</ul>
-								</>
+							{selection.visitors.length === 0 ?
+								<p className='admin-hint'>Personne n’a encore sélectionné de photo.</p>
+							:	selection.visitors.map(visitor => (
+									<div className='admin-selection__visitor' key={visitor.email || "anonyme"}>
+										<p className='admin-hint'>
+											<strong>{visitor.email || "Sélection sans email"}</strong> — {visitor.photos.length} photo{visitor.photos.length > 1 ? "s" : ""}
+											{visitor.updatedAt ? `, le ${new Date(visitor.updatedAt).toLocaleString("fr-FR")}` : ""} :
+										</p>
+										<ul className='admin-selection__list'>
+											{visitor.photos.map(photo => (
+												<li key={photo.pid}>{photo.originalName || photo.pid}</li>
+											))}
+										</ul>
+									</div>
+								))
 							}
 						</div>
 					:	null}

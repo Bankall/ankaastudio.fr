@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { galleryApi } from "../utils/galleryApi.js";
-import { readDownloadEmail, storeDownloadEmail } from "./downloadEmail.js";
+import { readVisitorEmail, storeVisitorEmail } from "./visitorEmail.js";
 import { EmailPrompt } from "./EmailPrompt.jsx";
 
 const POLL_INTERVAL_MS = 2000;
@@ -110,7 +110,7 @@ export function DownloadPanel({ slug, downloads, photoCount, selection, setId, s
 	const confirm = address => {
 		const request = pending;
 		setPending(null);
-		storeDownloadEmail(address);
+		storeVisitorEmail(address);
 		start(request, address);
 	};
 
@@ -207,7 +207,7 @@ export function DownloadPanel({ slug, downloads, photoCount, selection, setId, s
 					title='Recevoir votre archive'
 					message={`Indiquez votre email : le lien de téléchargement de ${pending.label} vous y sera envoyé dès que l’archive est prête.`}
 					submitLabel='Préparer mon archive'
-					defaultEmail={readDownloadEmail()}
+					defaultEmail={readVisitorEmail()}
 					onSubmit={confirm}
 					onCancel={() => setPending(null)}
 				/>

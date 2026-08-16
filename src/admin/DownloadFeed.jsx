@@ -9,7 +9,8 @@ const KIND_LABELS = {
 	all: "a téléchargé toutes les photos",
 	set: "a téléchargé un ensemble",
 	selection: "a téléchargé sa sélection",
-	photo: "a téléchargé une photo"
+	photo: "a téléchargé une photo",
+	favourite: "a commencé une sélection"
 };
 
 const formatMoment = value => (value ? new Date(value).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "");
@@ -26,7 +27,7 @@ function describe(event) {
 		return `${event.setTitle ? `a téléchargé l’ensemble « ${event.setTitle} »` : action} (${event.count} photo${event.count > 1 ? "s" : ""})`;
 	}
 
-	if (event.kind === "selection") {
+	if (event.kind === "selection" || event.kind === "favourite") {
 		return `${action} (${event.count} photo${event.count > 1 ? "s" : ""})`;
 	}
 
@@ -38,7 +39,8 @@ function describe(event) {
 }
 
 /**
- * Download notifications for the photographer.
+ * Client activity for the photographer: downloads, and the moment someone starts
+ * marking favourites.
  *
  * The read marker lives server-side, so the badge says the same thing on every
  * device; opening the panel is what clears it.
@@ -140,8 +142,8 @@ export function DownloadFeed() {
 
 	return (
 		<div className='admin-feed' ref={rootRef}>
-			<button type='button' className='admin-feed__toggle' onClick={toggle} aria-expanded={open} aria-label='Téléchargements des clients'>
-				Téléchargements
+			<button type='button' className='admin-feed__toggle' onClick={toggle} aria-expanded={open} aria-label='Activité des clients'>
+				Activité
 				{unseen > 0 ?
 					<span className='admin-feed__badge'>{unseen}</span>
 				:	null}
@@ -150,7 +152,7 @@ export function DownloadFeed() {
 			{open ?
 				<div className='admin-feed__panel'>
 					{log.events.length === 0 ?
-						<p className='admin-hint'>Aucun téléchargement pour l’instant.</p>
+						<p className='admin-hint'>Aucune activité pour l’instant.</p>
 					:	<ul className='admin-feed__list'>
 							{log.events.map(event => (
 								<li key={event.id} className={`admin-feed__item${isNew(event) ? " is-new" : ""}`}>

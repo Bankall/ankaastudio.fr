@@ -3,13 +3,13 @@ import { useParams } from "react-router-dom";
 import { Seo } from "../components/Seo.jsx";
 import { ApiError, galleryApi } from "../utils/galleryApi.js";
 import { DownloadPanel } from "./DownloadPanel.jsx";
-import { readDownloadEmail, storeDownloadEmail } from "./downloadEmail.js";
 import { EmailPrompt } from "./EmailPrompt.jsx";
 import { GalleryCover } from "./GalleryCover.jsx";
 import { Lightbox } from "./Lightbox.jsx";
 import { PasswordGate } from "./PasswordGate.jsx";
 import { PhotoTile } from "./PhotoTile.jsx";
 import { SetTabs } from "./SetTabs.jsx";
+import { readVisitorEmail, storeVisitorEmail } from "./visitorEmail.js";
 
 // Signed viewing cookies last 12h; renew well before that so a client who leaves
 // the tab open overnight never meets a wall of broken images.
@@ -19,6 +19,41 @@ const SELECTION_SAVE_DELAY_MS = 800;
 const PHOTOS_ID = "photos";
 // The grid, as the tabs' panel.
 const PANEL_ID = "gallery-set-panel";
+// The favourites tab, alongside the sets. Every set id the API mints is prefixed
+// `s_`, and the ungrouped one is `null`, so a plain word collides with neither.
+const FAVOURITES_ID = "favourites";
+// The answer for a photo whose set cannot be resolved, and what the favourites view
+// hands the download panel. A module constant so it keeps one identity across
+// renders, which the memos below depend on.
+const DOWNLOADS_OFF = { enabled: false, hd: false, zip: false };
+
+/** The list with `pid` added, or removed if it was already there. */
+const togglePid = (pids, pid) => (pids.includes(pid) ? pids.filter(candidate => candidate !== pid) : [...pids, pid]);
+
+/**
+ * Why the gallery is asking for an address, in the visitor's terms.
+ *
+ * The same prompt serves all three, because it is the same address: what changes is
+ * what happens the moment it is given, and saying which is what keeps a dialog in
+ * front of a photograph from feeling like a toll gate.
+ */
+const PROMPT_COPY = {
+	download: {
+		title: "Avant de télécharger",
+		message: "Indiquez votre email pour télécharger cette photo. Le téléchargement démarre aussitôt.",
+		submitLabel: "Télécharger"
+	},
+	favourite: {
+		title: "Votre sélection",
+		message: "Cette galerie est partagée : indiquez votre email pour que vos favoris soient bien les vôtres, et que le studio sache à qui ils sont.",
+		submitLabel: "Garder cette photo"
+	},
+	filter: {
+		title: "Vos favoris",
+		message: "Indiquez votre email pour retrouver les photos que vous avez marquées, ici comme sur vos autres appareils.",
+		submitLabel: "Voir mes favoris"
+	}
+};
 
 /**
  * Saves a same-origin URL under a chosen name without navigating away.
@@ -56,8 +91,16 @@ export function GalleryPage() {
 	// `undefined` means "whatever the manifest lists first", which is not the same as
 	// `null` — that one is the tab of photos belonging to no set.
 	const [tab, setTab] = useState({ slug, id: undefined });
-	// The photo waiting on an email address before it downloads.
-	const [pendingPid, setPendingPid] = useState(null);
+	// Who this browser belongs to, as far as the gallery knows. Favourites are filed
+	// under it, so nothing can be hearted before it is given.
+	const [email, setEmail] = useState(readVisitorEmail);
+	// Whether the favourites tab is the open one. Held apart from `tab` rather than as
+	// one of its values: the set stays remembered underneath, so leaving the selection
+	// is a click back onto the tab they came from.
+	const [favouritesOnly, setFavouritesOnly] = useState(false);
+	// What the visitor asked for before we knew who they were, waiting on the email
+	// prompt: { intent: "download" | "favourite" | "filter", pid? }.
+	const [prompt, setPrompt] = useState(null);
 	const saveTimerRef = useRef(null);
 
 	const applyManifest = useCallback(
@@ -104,28 +147,45 @@ export function GalleryPage() {
 	// Anything held for a previous slug is stale by definition.
 	const status = state.slug === slug ? state.status : "loading";
 
-	// Favourites are stored server-side so they survive a device change and so the
-	// photographer can read the client's picks.
+	// Favourites are stored server-side, under the visitor's address, so they survive
+	// a device change and so the photographer can read each person's picks.
+	const loadSelection = useCallback(
+		async address => {
+			if (!address) {
+				return [];
+			}
+
+			try {
+				return (await galleryApi.readSelection(slug, address)).pids ?? [];
+			} catch {
+				// A selection that cannot be read is not worth a message in front of the
+				// photographs; the hearts simply start empty.
+				return [];
+			}
+		},
+		[slug]
+	);
+
+	// On the way in, for an address this browser already holds: a client who picked
+	// here last week — or on their phone — finds their hearts already lit. A new
+	// address arrives through the prompt, which loads it itself before adding to it.
 	useEffect(() => {
-		if (status !== "ready") {
+		if (status !== "ready" || !email) {
 			return;
 		}
 
 		let cancelled = false;
 
-		galleryApi
-			.readSelection(slug)
-			.then(payload => {
-				if (!cancelled) {
-					setSelection(payload.pids ?? []);
-				}
-			})
-			.catch(() => {});
+		loadSelection(email).then(pids => {
+			if (!cancelled) {
+				setSelection(pids);
+			}
+		});
 
 		return () => {
 			cancelled = true;
 		};
-	}, [slug, status]);
+	}, [email, loadSelection, status]);
 
 	// Cookie renewal. One timer, rescheduled whenever a fresh manifest lands.
 	useEffect(() => {
@@ -150,24 +210,37 @@ export function GalleryPage() {
 		applyManifest(await galleryApi.unlock(slug, password));
 	};
 
-	/** Debounced: hearting a dozen photos in a row is one write, not a dozen. */
+	/**
+	 * Marks or unmarks a photo. Debounced: hearting a dozen photos in a row is one
+	 * write, not a dozen.
+	 *
+	 * The first heart of all asks who is pressing it. Several people are usually
+	 * behind one gallery link — a shoot with three models is three selections — and a
+	 * pick that is not attributed to anyone is of no use to the photographer.
+	 */
 	const toggleFavourite = useCallback(
 		pid => {
+			if (!email) {
+				setPrompt({ intent: "favourite", pid });
+
+				return;
+			}
+
 			setSelection(current => {
-				const next = current.includes(pid) ? current.filter(candidate => candidate !== pid) : [...current, pid];
+				const next = togglePid(current, pid);
 
 				if (saveTimerRef.current) {
 					clearTimeout(saveTimerRef.current);
 				}
 
 				saveTimerRef.current = setTimeout(() => {
-					galleryApi.saveSelection(slug, next).catch(() => {});
+					galleryApi.saveSelection(slug, email, next).catch(() => {});
 				}, SELECTION_SAVE_DELAY_MS);
 
 				return next;
 			});
 		},
-		[slug]
+		[email, slug]
 	);
 
 	useEffect(
@@ -190,17 +263,35 @@ export function GalleryPage() {
 	// an empty gallery.
 	const activeSet = (tab.slug === slug ? sets.find(set => set.id === tab.id) : null) ?? sets[0] ?? null;
 	const activeId = activeSet?.id ?? null;
-	// The API stamps every photo with the set it was actually placed in, so this is an
-	// exact split — and a no-op when there is a single tab.
-	const photos = useMemo(() => allPhotos.filter(photo => (photo.setId ?? null) === activeId), [allPhotos, activeId]);
 	const favourites = useMemo(() => new Set(selection), [selection]);
+	// The selection closes the row, after the sets it is drawn from. A tab of its own
+	// rather than a filter beside the row: it is another way through the same
+	// photographs, and the sets stay in place while it is open.
+	const tabs = useMemo(() => [...sets, { id: FAVOURITES_ID, title: "Mes favoris", favourite: true, count: selection.length }], [selection.length, sets]);
+	const activeTabId = favouritesOnly ? FAVOURITES_ID : activeId;
+	// A lone tab is a label, not a row — a gallery with no photos yet, where favourites
+	// are the only entry — and with no row the grid is nobody's tabpanel.
+	const showTabs = tabs.length > 1;
+	// The API stamps every photo with the set it was actually placed in, so the split
+	// by tab is exact — and a no-op when there is a single one. The favourites view
+	// ignores it: a selection spans the gallery, and someone looking for their picks
+	// wants all of them, not the ones that happen to sit in the open tab.
+	const photos = useMemo(
+		() => (favouritesOnly ? allPhotos.filter(photo => favourites.has(photo.pid)) : allPhotos.filter(photo => (photo.setId ?? null) === activeId)),
+		[activeId, allPhotos, favourites, favouritesOnly]
+	);
 	// Each set carries its own switches; the gallery's own cover the ungrouped photos
 	// and are the fallback for a manifest that predates sets.
-	const downloads = activeSet?.downloads ?? state.gallery?.downloads ?? { enabled: false, hd: false, zip: false };
-	// Whether the client takes home the full-resolution file. The button is offered
-	// either way: with HD off the watermarked web preview is what they get, which is
-	// still better than a gallery with no way to keep a photo at all.
-	const hd = Boolean(downloads.hd);
+	const galleryDownloads = state.gallery?.downloads ?? DOWNLOADS_OFF;
+	const downloads = activeSet?.downloads ?? galleryDownloads;
+	// Resolved per photo rather than per tab, because the favourites view puts photos
+	// from several sets in one grid: whether this photo may be saved, and whether it
+	// comes back full-resolution, is its own set's answer and nobody else's.
+	const downloadsByPid = useMemo(() => {
+		const bySet = new Map(sets.map(set => [set.id ?? null, set.downloads]));
+
+		return new Map(allPhotos.map(photo => [photo.pid, bySet.get(photo.setId ?? null) ?? galleryDownloads]));
+	}, [allPhotos, galleryDownloads, sets]);
 
 	// A favourite may sit in a set whose downloads are off, and the archive route
 	// silently drops those — so they are dropped here too, where the count is shown.
@@ -223,7 +314,10 @@ export function GalleryPage() {
 		async (pid, address) => {
 			await galleryApi.logDownload(slug, pid, address).catch(() => {});
 
-			if (hd) {
+			// Whether the client takes home the full-resolution file. The button is
+			// offered either way: with HD off the watermarked web preview is what they
+			// get, which is still better than a gallery with no way to keep a photo.
+			if (downloadsByPid.get(pid)?.hd) {
 				// The API answers 302 to a short-lived signed URL, and the object carries
 				// Content-Disposition: attachment, so this downloads without navigating.
 				window.location.href = galleryApi.downloadUrl(slug, pid);
@@ -242,31 +336,87 @@ export function GalleryPage() {
 			// rather than within the tab, so two sets cannot both produce a "-1".
 			saveAs(allPhotos[index].web, `${slug}-${index + 1}.webp`);
 		},
-		[allPhotos, hd, slug]
+		[allPhotos, downloadsByPid, slug]
 	);
 
 	// Asked once per browser: a prompt in front of every tile would be intolerable,
 	// and the address is only there to name the download.
 	const downloadPhoto = useCallback(
 		pid => {
-			const known = readDownloadEmail();
-
-			if (known) {
-				performDownload(pid, known);
+			if (email) {
+				performDownload(pid, email);
 
 				return;
 			}
 
-			setPendingPid(pid);
+			setPrompt({ intent: "download", pid });
 		},
-		[performDownload]
+		[email, performDownload]
 	);
 
-	const confirmPhotoEmail = address => {
-		const pid = pendingPid;
-		setPendingPid(null);
-		storeDownloadEmail(address);
-		performDownload(pid, address);
+	/**
+	 * Opens a tab, favourites included.
+	 *
+	 * The sets are open to everyone; the favourites tab is the one that needs a name to
+	 * show anything, so an unknown visitor is asked for theirs and the tab opens once
+	 * they answer. Cancelling leaves the set they were on showing.
+	 */
+	const selectTab = id => {
+		// The open lightbox belongs to the list that was showing, and this replaces it.
+		setLightboxIndex(null);
+
+		if (id !== FAVOURITES_ID) {
+			setFavouritesOnly(false);
+			setTab({ slug, id });
+
+			return;
+		}
+
+		if (!email) {
+			setPrompt({ intent: "filter" });
+
+			return;
+		}
+
+		setFavouritesOnly(true);
+	};
+
+	/**
+	 * The address, and then whatever it was asked for.
+	 *
+	 * A returning visitor may have picked on another device, so their stored list is
+	 * fetched before the new favourite is added to it rather than starting from this
+	 * browser's empty one — and the first pick is written straight away instead of
+	 * through the debounce, because it is also what tells the photographer that
+	 * somebody new has started choosing.
+	 */
+	const confirmEmail = async address => {
+		const asked = prompt;
+		setPrompt(null);
+		storeVisitorEmail(address);
+
+		if (asked.intent === "download") {
+			setEmail(address);
+			performDownload(asked.pid, address);
+
+			return;
+		}
+
+		const known = await loadSelection(address);
+		const next = asked.intent === "favourite" ? togglePid(known, asked.pid) : known;
+
+		setSelection(next);
+
+		if (asked.intent === "favourite") {
+			await galleryApi.saveSelection(slug, address, next).catch(() => {});
+		} else {
+			// The tab that raised the prompt, opening now that it has something to show.
+			setFavouritesOnly(true);
+		}
+
+		// Last, so that the load this starts cannot answer with a list that predates the
+		// pick just written.
+		setEmail(address);
 	};
 
 	const navigate = useCallback(
@@ -345,35 +495,37 @@ export function GalleryPage() {
 				<div className='gallery-view__bar'>
 					<p className='gallery-view__eyebrow'>ANKAA STUDIO</p>
 
-					<SetTabs
-						sets={sets}
-						activeId={activeId}
-						panelId={PANEL_ID}
-						sectionId={PHOTOS_ID}
-						// The open lightbox belongs to the tab that was showing; keeping its
-						// index would land on an unrelated photo, or on none at all.
-						onSelect={id => {
-							setTab({ slug, id });
-							setLightboxIndex(null);
-						}}
-					/>
+					{showTabs ?
+						<SetTabs tabs={tabs} activeId={activeTabId} panelId={PANEL_ID} sectionId={PHOTOS_ID} onSelect={selectTab} />
+					:	null}
 
 					<DownloadPanel
 						slug={slug}
-						downloads={downloads}
+						// In the favourites view the grid spans every set, so "tout télécharger"
+						// has no one set to mean; the selection archive is the batch download
+						// that still says something there.
+						downloads={favouritesOnly ? DOWNLOADS_OFF : downloads}
 						photoCount={photos.length}
 						selection={downloadableSelection}
-						// Scoped to the open tab only when there is more than one: a single
-						// tab is the whole gallery, and saying so keeps the photographer's
-						// feed reading "toute la galerie" as before.
+						// Scoped to the open set only when there is more than one of them: a
+						// gallery with a single set is the whole gallery, and saying so keeps
+						// the photographer's feed reading "toute la galerie" as before.
 						setId={sets.length > 1 ? activeId : undefined}
 						setTitle={sets.length > 1 ? activeSet?.title : ""}
 					/>
 				</div>
 
 				{photos.length === 0 ?
-					<p className='gallery-view__status gallery-view__status--empty'>Les photos arrivent bientôt.</p>
-				:	<div className='photo-grid' id={PANEL_ID} role={sets.length > 1 ? "tabpanel" : undefined} aria-labelledby={sets.length > 1 ? `set-tab-${activeId ?? "default"}` : undefined}>
+					// Still the tabs' panel, so that the favourites tab — which anyone can open
+					// before picking anything — is never a tab pointing at nothing.
+					<p
+						className='gallery-view__status gallery-view__status--empty'
+						id={PANEL_ID}
+						role={showTabs ? "tabpanel" : undefined}
+						aria-labelledby={showTabs ? `set-tab-${activeTabId ?? "default"}` : undefined}>
+						{favouritesOnly ? "Vous n’avez pas encore de favori. Touchez le cœur d’une photo pour la garder de côté." : "Les photos arrivent bientôt."}
+					</p>
+				:	<div className='photo-grid' id={PANEL_ID} role={showTabs ? "tabpanel" : undefined} aria-labelledby={showTabs ? `set-tab-${activeTabId ?? "default"}` : undefined}>
 						{photos.map((photo, index) => (
 							<PhotoTile
 								key={photo.pid}
@@ -381,7 +533,9 @@ export function GalleryPage() {
 								index={index}
 								isFavourite={favourites.has(photo.pid)}
 								showFavourites
-								showDownload={downloads.enabled}
+								// Per photo, not per tab: the favourites view mixes sets, and each
+								// one decides for its own photos whether they may be saved.
+								showDownload={Boolean(downloadsByPid.get(photo.pid)?.enabled)}
 								onOpen={setLightboxIndex}
 								onToggleFavourite={toggleFavourite}
 								onDownload={downloadPhoto}
@@ -397,7 +551,7 @@ export function GalleryPage() {
 				<Lightbox
 					photos={photos}
 					index={lightboxIndex}
-					downloads={downloads}
+					downloads={downloadsByPid.get(photos[lightboxIndex].pid) ?? DOWNLOADS_OFF}
 					isFavourite={favourites.has(photos[lightboxIndex]?.pid)}
 					showFavourites
 					onClose={() => setLightboxIndex(null)}
@@ -407,13 +561,15 @@ export function GalleryPage() {
 				/>
 			:	null}
 
-			{pendingPid ?
+			{/* One prompt for all three: the address is the same one, asked once, and a
+			    second dialog of its own would only be a second thing to dismiss. */}
+			{prompt ?
 				<EmailPrompt
-					title='Avant de télécharger'
-					message='Indiquez votre email pour télécharger cette photo. Le téléchargement démarre aussitôt.'
-					submitLabel='Télécharger'
-					onSubmit={confirmPhotoEmail}
-					onCancel={() => setPendingPid(null)}
+					title={PROMPT_COPY[prompt.intent].title}
+					message={PROMPT_COPY[prompt.intent].message}
+					submitLabel={PROMPT_COPY[prompt.intent].submitLabel}
+					onSubmit={confirmEmail}
+					onCancel={() => setPrompt(null)}
 				/>
 			:	null}
 		</div>
