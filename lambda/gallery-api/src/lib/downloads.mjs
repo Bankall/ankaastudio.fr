@@ -21,10 +21,11 @@ export const emptyDownloadLog = () => ({ events: [], seenAt: null });
 /**
  * `kind` is what the client asked for, not what they received:
  *   all       — the whole gallery as an archive
+ *   set       — one of the gallery's sets as an archive, named by `setTitle`
  *   selection — their favourites as an archive
  *   photo     — one photo, straight from a tile or the lightbox
  */
-export function downloadEvent({ gallery, email, kind, count, photoName = null }) {
+export function downloadEvent({ gallery, email, kind, count, photoName = null, setTitle = "" }) {
 	return {
 		id: eventId(),
 		at: new Date().toISOString(),
@@ -35,7 +36,8 @@ export function downloadEvent({ gallery, email, kind, count, photoName = null })
 		email,
 		kind,
 		count,
-		photoName
+		photoName,
+		setTitle
 	};
 }
 

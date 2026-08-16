@@ -89,8 +89,13 @@ export const galleryApi = {
 	readSelection: slug => request(`/api/g/${encodeURIComponent(slug)}/selection`),
 	saveSelection: (slug, pids) => request(`/api/g/${encodeURIComponent(slug)}/selection`, { method: "PUT", body: { pids } }),
 	// The email is what the archive link is sent to, and what names the download in
-	// the photographer's feed.
-	requestZip: (slug, pids, email) => request(`/api/g/${encodeURIComponent(slug)}/zip`, { method: "POST", body: { pids, email } }),
+	// the photographer's feed. `setId` scopes the archive to one tab — null being the
+	// ungrouped one, so it is sent only when it is actually meant, never as a default.
+	requestZip: (slug, pids, email, setId) =>
+		request(`/api/g/${encodeURIComponent(slug)}/zip`, {
+			method: "POST",
+			body: { pids, email, ...(setId === undefined ? {} : { setId }) }
+		}),
 	// Single-photo downloads happen in the browser; this is only the notification.
 	logDownload: (slug, pid, email) => request(`/api/g/${encodeURIComponent(slug)}/downloads`, { method: "POST", body: { pid, email } }),
 	readJob: jobId => request(`/api/jobs/${encodeURIComponent(jobId)}`),
@@ -114,14 +119,24 @@ export const adminApi = {
 
 	requestUploads: (gid, files) => request(`/api/admin/galleries/${gid}/uploads`, { method: "POST", body: { files } }),
 	// photos: [{ pid, extension, originalName }] — queues the derivative pipeline.
-	processPhotos: (gid, photos) => request(`/api/admin/galleries/${gid}/process`, { method: "POST", body: { photos } }),
+	// setId is the set the batch lands in; null is the gallery's ungrouped photos.
+	processPhotos: (gid, photos, setId = null) => request(`/api/admin/galleries/${gid}/process`, { method: "POST", body: { photos, setId } }),
 	pending: gid => request(`/api/admin/galleries/${gid}/pending`),
 	reconcile: gid => request(`/api/admin/galleries/${gid}/reconcile`, { method: "POST" }),
 	reprocess: gid => request(`/api/admin/galleries/${gid}/reprocess`, { method: "POST" }),
 
-	// patch: { order?: pid[], captions?: { [pid]: string } }
+	// patch: { order?: pid[], captions?: { [pid]: string }, sets?: { [pid]: setId | null } }
 	updatePhotos: (gid, patch) => request(`/api/admin/galleries/${gid}/photos`, { method: "PATCH", body: patch }),
 	deletePhoto: (gid, pid) => request(`/api/admin/galleries/${gid}/photos/${pid}`, { method: "DELETE" }),
+
+	// Sets: the client-facing tabs, each with its own download switches. Every one of
+	// these answers with the whole gallery, so the editor never has to merge.
+	createSet: (gid, title) => request(`/api/admin/galleries/${gid}/sets`, { method: "POST", body: { title } }),
+	// patch: { title?, downloadsEnabled?, hdEnabled? }
+	updateSet: (gid, sid, patch) => request(`/api/admin/galleries/${gid}/sets/${sid}`, { method: "PATCH", body: patch }),
+	reorderSets: (gid, order) => request(`/api/admin/galleries/${gid}/sets`, { method: "PATCH", body: { order } }),
+	// The set goes, its photos do not: they fall back to the gallery's settings.
+	deleteSet: (gid, sid) => request(`/api/admin/galleries/${gid}/sets/${sid}`, { method: "DELETE" }),
 
 	share: (gid, payload) => request(`/api/admin/galleries/${gid}/share`, { method: "POST", body: payload }),
 	selection: gid => request(`/api/admin/galleries/${gid}/selection`),

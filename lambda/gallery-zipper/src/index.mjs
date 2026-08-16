@@ -36,12 +36,14 @@ const zipKey = (gid, hash, suffix) => `media/g/${gid}/d/zip/${hash}${suffix}.zip
 const markerKey = (gid, hash) => `db/zips/${gid}/${hash}.json`;
 
 /**
- * Which derivative the archive is built from.
+ * Which derivative each entry is built from.
  *
- * A gallery with HD downloads switched off still allows archives — the client
- * just gets the same web-sized preview the tiles hand over, watermark included.
- * The API decides and says so in the payload; anything unrecognised (or a job
- * queued before this existed) falls back to HD, which is what every archive was.
+ * A set with HD downloads switched off still allows archives — the client just gets
+ * the same web-sized preview the tiles hand over, watermark included. It is decided
+ * per photo because it is decided per set, and one archive can span sets that
+ * disagree. The API says so on each entry; anything unrecognised (or a job queued
+ * before this existed) falls back to the payload's own `variant`, and then to HD,
+ * which is what every archive once was.
  */
 const SOURCES = {
 	hd: { key: (gid, pid, rev) => `media/g/${gid}/d/hd/${pid}_${rev}.jpg`, extension: "jpg" },
@@ -99,10 +101,11 @@ function partition(photos, maxBytes) {
 }
 
 /** Distinct, ordered, filesystem-safe entry names inside the archive. */
-function entryNames(photos, extension) {
+function entryNames(photos) {
 	const used = new Set();
 
 	return photos.map((photo, index) => {
+		const extension = photo.source.extension;
 		const stem = String(photo.originalName || photo.pid)
 			.replace(/\.[^.]+$/, "")
 			.replace(/[^\p{L}\p{N}._-]+/gu, "-")
@@ -149,9 +152,9 @@ function appendEntry(archive, body, name) {
 	});
 }
 
-async function buildPart({ gid, photos, key, filename, source, onProgress }) {
+async function buildPart({ gid, photos, key, filename, onProgress }) {
 	const archive = archiver("zip", { store: true });
-	const names = entryNames(photos, source.extension);
+	const names = entryNames(photos);
 
 	archive.on("warning", warning => console.warn("Archive warning", { code: warning.code, message: warning.message }));
 
@@ -197,7 +200,7 @@ async function buildPart({ gid, photos, key, filename, source, onProgress }) {
 			const photo = photos[index];
 			pending.set(
 				index,
-				s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: source.key(gid, photo.pid, photo.rev) }))
+				s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: photo.source.key(gid, photo.pid, photo.rev) }))
 			);
 		};
 
@@ -239,7 +242,10 @@ export const handler = async event => {
 		throw new Error("Payload must include jobId, gid, hash and a non-empty photos array.");
 	}
 
-	const source = SOURCES[variant] ?? SOURCES.hd;
+	// Resolved once, up front, so partitioning and naming both work off the same
+	// decision and nothing has to reach for the payload again.
+	const fallback = SOURCES[variant] ?? SOURCES.hd;
+	const entries = photos.map(photo => ({ ...photo, source: SOURCES[photo.variant] ?? fallback }));
 
 	let job;
 	try {
@@ -250,7 +256,7 @@ export const handler = async event => {
 		throw error;
 	}
 
-	const groups = partition(photos, MAX_PART_BYTES);
+	const groups = partition(entries, MAX_PART_BYTES);
 	const multi = groups.length > 1;
 	let completed = 0;
 	let lastProgressAt = 0;
@@ -283,7 +289,6 @@ export const handler = async event => {
 					photos: group,
 					key: zipKey(gid, hash, suffix),
 					filename,
-					source,
 					onProgress: publishProgress
 				})
 			);
@@ -309,7 +314,7 @@ export const handler = async event => {
 			updatedAt: new Date().toISOString()
 		});
 
-		console.info("Zip complete", { jobId, gid, variant: source.extension, parts: parts.length, photos: photos.length });
+		console.info("Zip complete", { jobId, gid, variant, parts: parts.length, photos: photos.length });
 
 		return { ok: true, parts };
 	} catch (error) {

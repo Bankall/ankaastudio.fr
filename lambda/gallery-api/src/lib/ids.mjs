@@ -17,6 +17,7 @@ export function shortId(length = 10) {
 
 export const galleryId = () => `g_${shortId(10)}`;
 export const photoId = () => `p_${shortId(12)}`;
+export const setId = () => `s_${shortId(10)}`;
 // Longer than the others because it is a bearer token: the archive link mailed
 // to a client carries nothing else, so guessing one must be hopeless (~95 bits).
 export const jobId = () => `j_${shortId(20)}`;
@@ -38,4 +39,4 @@ export function slugify(input) {
 }
 
 export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/;
-export const ID_PATTERN = /^[gpjd]_[0-9bcdfghjkmnpqrstvwxz]{6,24}$/;
+export const ID_PATTERN = /^[gpsjd]_[0-9bcdfghjkmnpqrstvwxz]{6,24}$/;

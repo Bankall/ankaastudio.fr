@@ -6,7 +6,7 @@ import { freezeOriginals, originalsState, purgeDerivatives, thawOriginals } from
 import { clearAdminSession, issueAdminSession, issueSignedCookies, penalise, requireAdmin } from "../lib/auth.mjs";
 import { markDownloadsSeen, readDownloadLog } from "../lib/downloads.mjs";
 import { badRequest, conflict, json, noContent, notFound, publicOrigin } from "../lib/http.mjs";
-import { galleryId, photoId, SLUG_PATTERN, slugify } from "../lib/ids.mjs";
+import { galleryId, photoId, setId as newSetId, SLUG_PATTERN, slugify } from "../lib/ids.mjs";
 import { emailButton, emailLayout, emailNote, emailParagraph, emailQuote, emailValue, escapeHtml, sendEmail } from "../lib/mailer.mjs";
 import { hashPassword, verifyPassword } from "../lib/passwords.mjs";
 import { invokeProcessor } from "../lib/processor.mjs";
@@ -22,8 +22,10 @@ import {
 	galleryKey,
 	hdKey,
 	INDEX_KEY,
+	MAX_SETS,
 	mediaPrefix,
 	newGallery,
+	newSet,
 	originalKey,
 	originalPrefix,
 	pendingPhoto,
@@ -197,9 +199,10 @@ async function updateGallery({ request, params }) {
 		clientEmail: email(body.clientEmail, "email du client"),
 		status: oneOf(body.status, "statut", GALLERY_STATUSES),
 		watermark: oneOf(body.watermark, "filigrane", WATERMARK_MODES),
+		// The master switch, and the HD setting for photos in no set. Each set carries
+		// its own pair; see the set routes below.
 		downloadsEnabled: bool(body.downloadsEnabled, "téléchargements"),
-		hdEnabled: bool(body.hdEnabled, "haute définition"),
-		zipEnabled: bool(body.zipEnabled, "archive ZIP")
+		hdEnabled: bool(body.hdEnabled, "haute définition")
 	};
 
 	for (const [field, value] of Object.entries(assignments)) {
@@ -425,6 +428,14 @@ async function processPhotos({ request, params }) {
 	}));
 
 	const { data: gallery, etag } = await loadGallery(params.gid);
+	// Which tab the batch lands in. Absent or null means the ungrouped remainder,
+	// which is where every upload went before sets existed.
+	const target = str(request.body?.setId, "ensemble", { max: 40 });
+
+	if (target && !(gallery.sets ?? []).some(set => set.id === target)) {
+		throw badRequest("Cet ensemble n'existe pas.");
+	}
+
 	const known = new Set(gallery.photos.map(photo => photo.pid));
 	// Deriving into an archived gallery would write the exact files archiving just
 	// deleted, into a gallery that answers 410 — and against an original the uploader
@@ -436,7 +447,9 @@ async function processPhotos({ request, params }) {
 	for (const item of queued) {
 		// A retried batch must not double the row it already added.
 		if (!known.has(item.pid)) {
-			gallery.photos.push(isArchived ? archivedPhoto(item, gallery.photos.length) : pendingPhoto(item, gallery.photos.length));
+			const entry = { ...item, setId: target };
+
+			gallery.photos.push(isArchived ? archivedPhoto(entry, gallery.photos.length) : pendingPhoto(entry, gallery.photos.length));
 		}
 	}
 
@@ -487,7 +500,9 @@ async function reconcile({ request, params }) {
 		})
 		.filter(item => item.pid);
 
-	// Editorial fields live on the record, not the sidecar, so they must survive.
+	// Editorial fields live on the record, not the sidecar, so they must survive —
+	// the set a photo was uploaded into among them, or every reconcile would empty
+	// the tabs while a batch was still processing.
 	const existing = new Map(gallery.photos.map(photo => [photo.pid, photo]));
 
 	const merged = sidecars.map(sidecar => {
@@ -504,7 +519,8 @@ async function reconcile({ request, params }) {
 		return {
 			...sidecar,
 			sortIndex: previous?.sortIndex ?? null,
-			caption: previous?.caption ?? sidecar.caption ?? null
+			caption: previous?.caption ?? sidecar.caption ?? null,
+			setId: previous?.setId ?? null
 		};
 	});
 
@@ -622,6 +638,30 @@ async function patchPhotos({ request, params }) {
 		}
 	}
 
+	// { [pid]: setId | null } — null moves the photo out of every set, back to the
+	// gallery's own download settings.
+	if (body.sets !== undefined) {
+		if (typeof body.sets !== "object" || body.sets === null) {
+			throw badRequest("Les ensembles doivent être fournis sous forme d'objet.");
+		}
+
+		const known = new Set((gallery.sets ?? []).map(set => set.id));
+
+		for (const [pid, sid] of Object.entries(body.sets)) {
+			const target = str(sid, "ensemble", { max: 40 });
+
+			if (target && !known.has(target)) {
+				throw badRequest("Cet ensemble n'existe pas.");
+			}
+
+			const photo = gallery.photos.find(candidate => candidate.pid === pid);
+
+			if (photo) {
+				photo.setId = target;
+			}
+		}
+	}
+
 	await saveGallery(gallery, etag);
 
 	return json(200, { gallery: adminProjection(gallery) });
@@ -651,6 +691,109 @@ async function deletePhoto({ request, params }) {
 
 	if (gallery.coverPid === params.pid) {
 		gallery.coverPid = null;
+	}
+
+	await saveGallery(gallery, etag);
+
+	return json(200, { gallery: adminProjection(gallery) });
+}
+
+// --- sets ------------------------------------------------------------------
+
+/** The set by id, or a 404 — every route below needs exactly this. */
+function findSet(gallery, sid) {
+	const set = (gallery.sets ?? []).find(candidate => candidate.id === sid);
+
+	if (!set) {
+		throw notFound("Ensemble introuvable.");
+	}
+
+	return set;
+}
+
+/**
+ * Creates an empty set.
+ *
+ * Nothing is moved into it, which is what makes creating one harmless: the tab
+ * appears in the editor, the client sees nothing change until photos are put in it
+ * — from the uploader's target select, or one photo at a time in the grid.
+ */
+async function createSet({ request, params }) {
+	await requireAdmin(request);
+	const { data: gallery, etag } = await loadGallery(params.gid);
+	const title = str(request.body?.title, "titre de l'ensemble", { max: 120, required: true, allowEmpty: false });
+
+	gallery.sets = gallery.sets ?? [];
+
+	if (gallery.sets.length >= MAX_SETS) {
+		throw badRequest(`${MAX_SETS} ensembles maximum par galerie.`);
+	}
+
+	gallery.sets.push(newSet({ id: newSetId(), title, hdEnabled: gallery.hdEnabled }));
+
+	await saveGallery(gallery, etag);
+
+	return json(201, { gallery: adminProjection(gallery) });
+}
+
+async function updateSet({ request, params }) {
+	await requireAdmin(request);
+	const { data: gallery, etag } = await loadGallery(params.gid);
+	const set = findSet(gallery, params.sid);
+
+	const assignments = {
+		title: str(request.body?.title, "titre de l'ensemble", { max: 120, allowEmpty: false }),
+		downloadsEnabled: bool(request.body?.downloadsEnabled, "téléchargements de l'ensemble"),
+		hdEnabled: bool(request.body?.hdEnabled, "haute définition de l'ensemble")
+	};
+
+	for (const [field, value] of Object.entries(assignments)) {
+		if (value !== null) {
+			set[field] = value;
+		}
+	}
+
+	// Cached archives are keyed by the variant they were built from, so flipping HD
+	// here cannot serve the wrong quality from cache — the next request simply
+	// misses and builds the other one.
+	await saveGallery(gallery, etag);
+
+	return json(200, { gallery: adminProjection(gallery) });
+}
+
+/** Reorders the tabs. The array *is* the order, so this rewrites it. */
+async function reorderSets({ request, params }) {
+	await requireAdmin(request);
+	const { data: gallery, etag } = await loadGallery(params.gid);
+	const order = stringArray(request.body?.order, "ordre des ensembles", { max: MAX_SETS });
+	const position = new Map((order ?? []).map((sid, index) => [sid, index]));
+
+	// Anything the caller left out keeps its relative place at the end rather than
+	// disappearing: a set created in another tab must not be dropped by a stale order.
+	gallery.sets = (gallery.sets ?? [])
+		.slice()
+		.sort((a, b) => (position.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (position.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+
+	await saveGallery(gallery, etag);
+
+	return json(200, { gallery: adminProjection(gallery) });
+}
+
+/**
+ * Removes a set, but never its photos: they go back to the gallery's own
+ * settings. Deleting a tab must not be a way to delete photographs.
+ */
+async function deleteSet({ request, params }) {
+	await requireAdmin(request);
+	const { data: gallery, etag } = await loadGallery(params.gid);
+	findSet(gallery, params.sid);
+
+	gallery.sets = gallery.sets.filter(candidate => candidate.id !== params.sid);
+
+	for (const photo of gallery.photos) {
+		if (photo.setId === params.sid) {
+			photo.setId = null;
+		}
 	}
 
 	await saveGallery(gallery, etag);
@@ -844,6 +987,10 @@ export const adminRoutes = [
 	["POST", "/api/admin/galleries/:gid/reconcile", reconcile],
 	["PATCH", "/api/admin/galleries/:gid/photos", patchPhotos],
 	["DELETE", "/api/admin/galleries/:gid/photos/:pid", deletePhoto],
+	["POST", "/api/admin/galleries/:gid/sets", createSet],
+	["PATCH", "/api/admin/galleries/:gid/sets", reorderSets],
+	["PATCH", "/api/admin/galleries/:gid/sets/:sid", updateSet],
+	["DELETE", "/api/admin/galleries/:gid/sets/:sid", deleteSet],
 	["POST", "/api/admin/galleries/:gid/reprocess", reprocess],
 	["POST", "/api/admin/galleries/:gid/share", share],
 	["GET", "/api/admin/galleries/:gid/selection", readSelection],

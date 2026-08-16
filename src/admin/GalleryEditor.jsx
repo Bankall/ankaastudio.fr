@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { adminApi } from "../utils/galleryApi.js";
 import { AdminPhotoGrid } from "./AdminPhotoGrid.jsx";
+import { SetsPanel } from "./SetsPanel.jsx";
 import { SharePanel } from "./SharePanel.jsx";
 import { Uploader } from "./Uploader.jsx";
 
@@ -187,6 +188,33 @@ export function GalleryEditor() {
 		}
 	};
 
+	// Every set route answers with the whole gallery, so each of these is one call
+	// and one state swap — the photos' new setId comes back with it. Resolves to the
+	// gallery or to null, like `patch`, so a caller can tell a failure from a success
+	// without handling the error itself.
+	const withGallery = async call => {
+		setError("");
+
+		try {
+			const payload = await call();
+			setGallery(payload.gallery);
+
+			return payload.gallery;
+		} catch (failure) {
+			setError(failure.message);
+
+			return null;
+		}
+	};
+
+	const handleDeleteSet = async set => {
+		if (!window.confirm(`Supprimer l’ensemble « ${set.title} » ? Ses photos restent dans la galerie, sans onglet.`)) {
+			return;
+		}
+
+		await withGallery(() => adminApi.deleteSet(gid, set.id));
+	};
+
 	// Archiving deletes every derivative, so it must not happen on a mis-click in a
 	// select. It stays a confirmation rather than a separate guarded action because
 	// the originals survive and Régénérer les aperçus rebuilds the rest — expensive
@@ -243,6 +271,11 @@ export function GalleryEditor() {
 	const pendingCount = gallery.photos.filter(photo => photo.status === "processing").length;
 	const failedCount = gallery.photos.filter(photo => photo.status === "failed").length;
 	const archivedCount = gallery.photos.filter(photo => photo.status === "archived").length;
+	const sets = gallery.sets ?? [];
+	const setCounts = Object.fromEntries(sets.map(set => [set.id, gallery.photos.filter(photo => photo.setId === set.id).length]));
+	// Counted by exclusion so a photo left pointing at a deleted set lands here,
+	// which is exactly where the client's manifest puts it.
+	const ungroupedCount = gallery.photos.filter(photo => !sets.some(set => set.id === photo.setId)).length;
 
 	return (
 		<section className='admin-section'>
@@ -373,13 +406,15 @@ export function GalleryEditor() {
 							<span>Fichiers haute définition</span>
 						</label>
 
-						<label className='admin-toggle'>
-							<input type='checkbox' checked={gallery.zipEnabled} disabled={!gallery.downloadsEnabled} onChange={event => patch({ zipEnabled: event.target.checked })} />
-							<span>Archive ZIP groupée</span>
-						</label>
 					</div>
 
-					<p className='admin-hint'>Sans haute définition, le client télécharge l’aperçu web filigrané photo par photo.</p>
+					{/* The first switch is the master one — it alone decides whether the API
+					    signs anything under d/ — and the second only covers the photos that
+					    are in no set. Each set has its own pair, in the panel below. */}
+					<p className='admin-hint'>
+						Sans haute définition, le client télécharge l’aperçu web filigrané, photo par photo comme en archive ZIP. Les ensembles peuvent avoir leurs propres réglages, mais couper
+						les téléchargements ici les coupe partout.
+					</p>
 
 					<div className='field'>
 						<label htmlFor='gallery-watermark'>Filigrane</label>
@@ -409,8 +444,22 @@ export function GalleryEditor() {
 				</article>
 
 				<article className='admin-panel admin-panel--wide'>
+					<h2 className='admin-panel__title'>Ensembles</h2>
+					<SetsPanel
+						sets={sets}
+						counts={setCounts}
+						ungroupedCount={ungroupedCount}
+						downloadsEnabled={gallery.downloadsEnabled}
+						onCreate={title => withGallery(() => adminApi.createSet(gid, title))}
+						onUpdate={(sid, changes) => withGallery(() => adminApi.updateSet(gid, sid, changes))}
+						onReorder={order => withGallery(() => adminApi.reorderSets(gid, order))}
+						onDelete={handleDeleteSet}
+					/>
+				</article>
+
+				<article className='admin-panel admin-panel--wide'>
 					<h2 className='admin-panel__title'>Photos</h2>
-					<Uploader gid={gid} archived={gallery.status === "archived"} onUploaded={reconcile} />
+					<Uploader gid={gid} sets={sets} archived={gallery.status === "archived"} onUploaded={reconcile} />
 
 					<div className='admin-panel__toolbar'>
 						<button className='button-secondary' type='button' onClick={reconcile}>
@@ -442,11 +491,13 @@ export function GalleryEditor() {
 
 					<AdminPhotoGrid
 						photos={gallery.photos}
+						sets={sets}
 						coverPid={gallery.coverPid}
 						onReorder={order => adminApi.updatePhotos(gid, { order }).then(payload => setGallery(payload.gallery))}
 						onSetCover={pid => patch({ coverPid: pid })}
 						onDelete={handleDeletePhoto}
 						onCaption={(pid, caption) => adminApi.updatePhotos(gid, { captions: { [pid]: caption } }).then(payload => setGallery(payload.gallery))}
+						onAssign={(pid, sid) => withGallery(() => adminApi.updatePhotos(gid, { sets: { [pid]: sid } }))}
 					/>
 				</article>
 			</div>

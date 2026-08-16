@@ -1260,11 +1260,11 @@ button {
 
 .gallery-view {
 	min-height: 100vh;
-	background: var(--surface);
+	background: #fff;
 	/* The one gutter the full-bleed layout has: the grid's column gap, its outer
 	   padding and the bar above it all read from this, so the photographs line up
 	   with the controls at every width. */
-	--gallery-gutter: 0.9rem;
+	--gallery-gutter: 0.5rem;
 }
 
 .gallery-view--centered {
@@ -1459,22 +1459,72 @@ button {
 	padding: 0 var(--gallery-gutter) 5rem;
 }
 
+/* Sets, as tabs. Scrolls sideways rather than wrapping: eight sets must not push
+   the photographs down by three rows on a phone. */
+.gallery-tabs {
+	display: flex;
+	gap: 0.35rem;
+	padding-top: 1.6rem;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.gallery-tabs::-webkit-scrollbar {
+	display: none;
+}
+
+.gallery-tabs__tab {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: baseline;
+	gap: 0.45rem;
+	padding: 0.5rem 1rem;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	color: var(--muted);
+	cursor: pointer;
+	transition:
+		background 160ms ease-out,
+		color 160ms ease-out;
+}
+
+.gallery-tabs__tab:hover {
+	color: var(--text);
+	background: rgba(255, 255, 255, 0.5);
+}
+
+.gallery-tabs__tab.is-active {
+	border-color: var(--line-strong);
+	background: var(--surface-strong);
+	color: var(--text);
+}
+
+.gallery-tabs__count {
+	font-size: 0.72rem;
+	color: var(--muted);
+}
+
 .gallery-view__bar {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
 	justify-content: space-between;
+	font-size: 0.875rem;
+	position: sticky;
+	z-index: 10;
+	top: 0;
 	gap: 1rem;
-	padding: 1.6rem 0;
-	margin-bottom: 1.4rem;
+	padding: 0.875rem 0;
+	margin-bottom: 0.875rem;
 	border-bottom: 1px solid var(--line);
+	background: #fff;
 }
 
-.gallery-view__count {
+.gallery-view__eyebrow {
 	margin: 0;
 	text-transform: uppercase;
-	letter-spacing: 0.18em;
-	font-size: 0.78rem;
+	letter-spacing: 0.3em;
+	font-size: 0.72rem;
 	color: var(--muted);
 }
 
@@ -2365,7 +2415,123 @@ button {
 	background: #9c4a3f;
 }
 
+/* --- sets ---------------------------------------------------------------- */
+
+.admin-sets {
+	display: grid;
+	gap: 0.9rem;
+}
+
+.admin-sets__list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 0.5rem;
+}
+
+/* One line per set on a wide screen, stacked below: the name has to keep enough
+   room to read, and the switches are the widest part. */
+.admin-sets__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.6rem 1rem;
+	padding: 0.6rem 0.8rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-md);
+	background: var(--surface-strong);
+}
+
+.admin-sets__row--default {
+	background: none;
+	border-style: dashed;
+}
+
+.admin-sets__name {
+	flex: 1 1 12rem;
+	min-width: 0;
+	padding: 0.45rem 0.6rem;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius-sm);
+	background: rgba(255, 255, 255, 0.9);
+}
+
+.admin-sets__title {
+	flex: 1 1 12rem;
+	font-size: 0.92rem;
+	color: var(--muted);
+}
+
+.admin-sets__count,
+.admin-sets__hint {
+	font-size: 0.78rem;
+	color: var(--muted);
+	white-space: nowrap;
+}
+
+/* Pushed to the end of the row, whatever wraps before it. */
+.admin-sets__tools {
+	display: flex;
+	gap: 0.2rem;
+	margin-left: auto;
+}
+
+.admin-sets__tools button {
+	width: 1.9rem;
+	height: 1.9rem;
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+	line-height: 1;
+	cursor: pointer;
+}
+
+.admin-sets__tools button:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+.admin-uploader__target {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	margin-bottom: 0.8rem;
+	font-size: 0.9rem;
+}
+
+.admin-uploader__target select {
+	padding: 0.5rem 0.7rem;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius-sm);
+	background: var(--surface-strong);
+}
+
 /* --- photo manager ------------------------------------------------------- */
+
+.admin-photo-sets {
+	display: grid;
+	gap: 1.4rem;
+}
+
+.admin-photo-set__title {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.8rem;
+	margin: 0 0 0.6rem;
+	padding-bottom: 0.35rem;
+	border-bottom: 1px solid var(--line);
+	font-family: var(--font-display);
+	font-size: 1.05rem;
+	font-weight: 400;
+}
+
+.admin-photo-set__count {
+	font-family: var(--font-body);
+	font-size: 0.75rem;
+	color: var(--muted);
+}
 
 .admin-photo-grid {
 	list-style: none;
@@ -2461,6 +2627,27 @@ button {
 
 .admin-photo__delete {
 	color: #9c4a3f;
+}
+
+/* Revealed with the tools, and kept off the left half so most of the tile stays
+   grabbable — a select swallows the drag that starts on it. */
+.admin-photo__set {
+	position: absolute;
+	right: 0.3rem;
+	bottom: 0.3rem;
+	width: 65%;
+	padding: 0.15rem 0.25rem;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: rgba(255, 253, 250, 0.92);
+	font-size: 0.68rem;
+	opacity: 0;
+	transition: opacity 150ms ease-out;
+}
+
+.admin-photo:hover .admin-photo__set,
+.admin-photo:focus-within .admin-photo__set {
+	opacity: 1;
 }
 
 .admin-photo__caption,

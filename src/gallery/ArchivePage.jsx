@@ -79,6 +79,11 @@ export function ArchivePage() {
 			<div className='gallery-view__empty archive-card'>
 				<h1 className='gallery-view__title'>{archive?.title ? `Archive — ${archive.title}` : "Votre archive photo"}</h1>
 
+				{/* Which set, when it was one: the same gallery can have sent several links. */}
+				{archive?.setTitle ?
+					<p className='gallery-view__status'>Ensemble « {archive.setTitle} »</p>
+				:	null}
+
 				{state.status === "loading" ?
 					<p className='gallery-view__status'>Vérification du lien…</p>
 				:	null}

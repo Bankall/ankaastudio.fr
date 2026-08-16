@@ -36,7 +36,9 @@ by configuration — there is no signature that can reach them.
   download gets its own 5-minute signed URL from the API.
 
 Download blocking is therefore not a UI toggle: with `downloadsEnabled: false`
-the API simply refuses to sign anything under `d/`, and nothing else can.
+the API simply refuses to sign anything under `d/`, and nothing else can. A set
+may narrow that (see [Sets](#sets)) but never widen it — the gallery's flag is
+checked first, on every route that signs.
 
 ### Two things about the API origin that will bite you
 
@@ -72,11 +74,12 @@ document for them to race on.
 
 **Content-addressed derivatives:** keys carry `_<rev>`, so everything under
 `media/` is served `immutable` for a year and re-processing never needs an
-invalidation. ZIPs are keyed by `sha1` of the exact photo revisions requested —
-plus a `web:` prefix when the gallery has HD downloads switched off, since the
-archive is then built from the watermarked previews and is a different file — so
-asking twice costs one build, and flipping the HD switch can never serve the
-wrong quality from cache.
+invalidation. ZIPs are keyed by `sha1` of the exact photo revisions requested,
+each tagged with the derivative it was taken from (`<pid>_<rev>` for HD,
+`<pid>_<rev>:web` for a photo whose set has HD switched off and which therefore
+goes in as the watermarked preview). So asking twice costs one build, flipping an
+HD switch can never serve the wrong quality from cache, and one archive can mix
+both — a favourites selection spans sets that need not agree.
 
 **The API sends the archive email, not the zipper.** A client asking for an
 archive gives an email address (never verified — it is there to name the download
@@ -235,6 +238,39 @@ new ones are queued.
 **A batch of uploads that never finished** (tab closed mid-upload) — press
 *Actualiser* in the editor. `reconcile` folds in every sidecar it finds and
 re-queues any original that never produced one.
+
+### Sets
+
+A set is a named group of photos inside a gallery, shown to the client as a tab
+with its own download switches. They live on the record as `sets: [{ id, title,
+downloadsEnabled, hdEnabled }]` — the array *is* the tab order — and a photo
+belongs to one through its own `setId`.
+
+Nothing needed migrating and nothing needs creating: `setId: null` means the photo
+is served under the gallery's own switches, which is what every photo did before
+sets existed. The API always sends the client at least one group, so a gallery
+with no sets is simply a gallery with one unnamed set, and the tab bar does not
+render.
+
+Consequences worth knowing:
+
+- **The gallery's `downloadsEnabled` is the master switch.** A set's own flag can
+  only close what the gallery has opened; `hdEnabled` is the set's call, falling
+  back to the gallery's for ungrouped photos.
+- **Deleting a set never deletes photographs.** Its photos go back to `setId:
+  null`, i.e. to the gallery's settings. Sets are created empty for the same
+  reason — creating and deleting one are both cheap and reversible.
+- **HD off does not mean no archive.** Those photos go into the ZIP as the same
+  watermarked preview the tiles hand over, which is why an archive can be mixed.
+- **A set's photos are not a separate order.** The record keeps one flat photo
+  order and the tabs slice it, so the admin grid only reorders within a block.
+- **Archive links are re-checked per set.** The job document records the `setIds`
+  it drew from, and both `GET /api/jobs/<jid>` and the emailed
+  `GET /api/archives/<jid>` refuse to re-sign once any of them has downloads
+  switched off — so retracting a link is per set, not only per gallery.
+- **A dangling `setId`** (a set deleted by another admin tab mid-edit) degrades to
+  the ungrouped group rather than to an invisible photo: the client manifest sends
+  the group each photo was actually placed in.
 
 ### Archiving a gallery
 

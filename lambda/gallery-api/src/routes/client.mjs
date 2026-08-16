@@ -14,7 +14,22 @@ import { getSecrets } from "../lib/secrets.mjs";
 import { getJson, objectExists, putJson, updateJson } from "../lib/store.mjs";
 import { signedUrl } from "../lib/cfsign.mjs";
 import { email as emailField, str, stringArray } from "../lib/validate.mjs";
-import { clientProjection, coverImageKey, emptyIndex, galleryKey, hdKey, INDEX_KEY, isExpired, jobKey, readyCover, selectionKey, zipMarkerKey } from "../lib/galleries.mjs";
+import {
+	clientProjection,
+	coverImageKey,
+	downloadsFor,
+	emptyIndex,
+	galleryKey,
+	hdKey,
+	INDEX_KEY,
+	isExpired,
+	jobKey,
+	photoDownloads,
+	readyCover,
+	selectionKey,
+	setOf,
+	zipMarkerKey
+} from "../lib/galleries.mjs";
 
 const lambda = new LambdaClient({});
 
@@ -189,21 +204,50 @@ async function refresh({ request, params }) {
 
 // --- downloads -------------------------------------------------------------
 
-/**
- * Throws unless this gallery currently permits the requested download kind.
- * Called with no kind to check only that downloads are on at all.
- */
-function assertDownloadable(gallery, kind) {
+/** The master switch: with this off nothing under `d/` is ever signed. */
+function assertDownloadable(gallery) {
 	if (!gallery.downloadsEnabled) {
 		throw forbidden("Les téléchargements sont désactivés pour cette galerie.");
 	}
+}
 
-	if (kind === "hd" && !gallery.hdEnabled) {
-		throw forbidden("Le téléchargement haute définition est désactivé.");
+/**
+ * Throws unless this photo's set currently permits the requested download kind.
+ *
+ * The gallery's own switch is checked separately, and first, by every caller: a
+ * request naming a photo that does not exist must not be distinguishable from one
+ * to a gallery with downloads off.
+ */
+function assertPhotoDownloadable(gallery, photo, kind) {
+	const downloads = photoDownloads(gallery, photo);
+
+	if (!downloads.enabled) {
+		throw forbidden("Les téléchargements sont désactivés pour cet ensemble.");
 	}
 
-	if (kind === "zip" && !gallery.zipEnabled) {
-		throw forbidden("Le téléchargement groupé est désactivé.");
+	if (kind === "hd" && !downloads.hd) {
+		throw forbidden("Le téléchargement haute définition est désactivé.");
+	}
+}
+
+/**
+ * Re-checks an archive's sets when it is picked up.
+ *
+ * A job records which sets it drew from, so turning downloads off — for the gallery
+ * or for one of its sets — retracts every link ever sent. That is the promise that
+ * lets the emailed link live outside the password gate. Jobs written before sets
+ * existed carry no list, and the gallery-level check is the one they were built
+ * under anyway.
+ */
+function assertJobDownloadable(gallery, job) {
+	assertDownloadable(gallery);
+
+	for (const sid of job.setIds ?? []) {
+		const set = sid ? (gallery.sets ?? []).find(candidate => candidate.id === sid) : null;
+
+		if (!downloadsFor(gallery, set).enabled) {
+			throw forbidden("Les téléchargements sont désactivés pour cet ensemble.");
+		}
 	}
 }
 
@@ -216,12 +260,14 @@ function assertDownloadable(gallery, kind) {
 async function downloadPhoto({ request, params }) {
 	const gallery = await resolveGallery(request, params.slug);
 	await requireGalleryAccess(request, gallery);
-	assertDownloadable(gallery, "hd");
+	assertDownloadable(gallery);
 
 	const photo = gallery.photos.find(candidate => candidate.pid === params.pid && candidate.status === "ready");
 	if (!photo) {
 		throw notFound("Photo introuvable.");
 	}
+
+	assertPhotoDownloadable(gallery, photo, "hd");
 
 	const { cfPrivateKey } = await getSecrets();
 	const origin = publicOrigin(request);
@@ -266,15 +312,22 @@ const archiveUrl = (origin, jid) => `${origin}/archive/${jid}`;
  * identity, and a link that is live a moment later reads no differently in an
  * inbox. The page behind it polls, so it is correct either way.
  */
-async function mailArchiveLink({ gallery, recipient, link, origin, count, ready }) {
-	const subject = `Votre archive photo « ${gallery.title} »`;
+async function mailArchiveLink({ gallery, recipient, link, origin, count, ready, setTitle = "" }) {
+	// Named in the subject when it is one set: a client who downloads three tabs gets
+	// three of these, and only the name tells them apart in an inbox.
+	const subject = setTitle ? `Votre archive photo « ${gallery.title} » — ${setTitle}` : `Votre archive photo « ${gallery.title} »`;
 	const wait = ready ? "Votre archive est prête." : "Votre archive est en préparation, cela peut prendre quelques minutes.";
 	const scope = `${count} photo${count > 1 ? "s" : ""}`;
+	const source = setTitle ? `l’ensemble « ${setTitle} » de la galerie « ${gallery.title} »` : `la galerie « ${gallery.title} »`;
+	const sourceHtml =
+		setTitle ?
+			`l’ensemble <strong>${escapeHtml(setTitle)}</strong> de la galerie <strong>${escapeHtml(gallery.title)}</strong>`
+		:	`la galerie <strong>${escapeHtml(gallery.title)}</strong>`;
 
 	const lines = [
 		`Bonjour ${gallery.clientName || ""}`.trim() + ",",
 		"",
-		`${wait} Elle contient ${scope} de la galerie « ${gallery.title} ».`,
+		`${wait} Elle contient ${scope} de ${source}.`,
 		"",
 		link,
 		"",
@@ -291,11 +344,11 @@ async function mailArchiveLink({ gallery, recipient, link, origin, count, ready 
 		html: emailLayout({
 			label: ready ? "Archive prête" : "Archive en préparation",
 			heading: "Votre archive photo",
-			preview: `${wait} Elle contient ${scope} de la galerie « ${gallery.title} ».`,
+			preview: `${wait} Elle contient ${scope} de ${source}.`,
 			origin,
 			inner: [
 				emailParagraph(`Bonjour ${escapeHtml(gallery.clientName || "")},`),
-				emailParagraph(`${escapeHtml(wait)} Elle contient ${escapeHtml(scope)} de la galerie <strong>${escapeHtml(gallery.title)}</strong>.`),
+				emailParagraph(`${escapeHtml(wait)} Elle contient ${escapeHtml(scope)} de ${sourceHtml}.`),
 				emailButton(link, "Télécharger l’archive"),
 				emailNote("Ce lien reste valable 7 jours. Passé ce délai, votre galerie vous en prépare un nouveau.")
 			].join("")
@@ -306,9 +359,13 @@ async function mailArchiveLink({ gallery, recipient, link, origin, count, ready 
 /**
  * Batch download.
  *
- * The archive is content-addressed by the exact set of photo revisions it
- * contains, so the same request twice costs one build, and a selection gets its
- * own cache entry for free.
+ * Three scopes, in order of precedence: an explicit `pids` selection, a `setId`
+ * naming one tab (null for the ungrouped remainder), or the whole gallery when
+ * neither is given.
+ *
+ * The archive is content-addressed by the exact photo revisions it contains and the
+ * derivative each was taken from, so the same request twice costs one build, and a
+ * selection gets its own cache entry for free.
  *
  * The email address is the price of admission: it is what the link is sent to and
  * what names the download in the photographer's feed. It is never verified — a
@@ -317,35 +374,66 @@ async function mailArchiveLink({ gallery, recipient, link, origin, count, ready 
 async function downloadZip({ request, params }) {
 	const gallery = await resolveGallery(request, params.slug);
 	await requireGalleryAccess(request, gallery);
-	assertDownloadable(gallery, "zip");
+	assertDownloadable(gallery);
 
 	const requested = stringArray(request.body?.pids, "photos", { max: MAX_ZIP_PHOTOS });
 	const recipient = emailField(request.body?.email, "email", { required: true });
+	// Absent means the whole gallery; present-and-null means the ungrouped tab, which
+	// is why this cannot collapse into a plain `?? null`.
+	const scopedSet = request.body?.setId === undefined ? undefined : str(request.body.setId, "ensemble", { max: 40 });
 	const ready = gallery.photos.filter(photo => photo.status === "ready");
-	const chosen = requested?.length ? ready.filter(photo => requested.includes(photo.pid)) : ready;
 
-	if (chosen.length === 0) {
-		throw badRequest("Aucune photo à télécharger.");
+	const scoped =
+		requested?.length ? ready.filter(photo => requested.includes(photo.pid))
+		: scopedSet !== undefined ? ready.filter(photo => (setOf(gallery, photo)?.id ?? null) === scopedSet)
+		: ready;
+
+	// A selection can span sets, and a set with downloads off must not be smuggled
+	// out inside an archive of one that has them on. Dropping those photos rather
+	// than refusing outright is what keeps the button meaning "all of it you are
+	// allowed to have" instead of failing for a reason the client cannot see.
+	const allowed = scoped.map(photo => ({ photo, downloads: photoDownloads(gallery, photo) })).filter(entry => entry.downloads.enabled);
+
+	if (allowed.length === 0) {
+		throw scoped.length === 0 ? badRequest("Aucune photo à télécharger.") : forbidden("Les téléchargements sont désactivés pour ces photos.");
 	}
 
-	const ordered = chosen.slice().sort((a, b) => a.sortIndex - b.sortIndex);
-	// HD off does not mean no archive: the client gets the same web-sized preview
-	// the tiles hand over, watermark and all.
-	const variant = gallery.hdEnabled ? "hd" : "web";
-	const fingerprint = ordered.map(photo => `${photo.pid}_${photo.rev}`).join(",");
+	// HD off does not mean no archive: those photos go in as the same web-sized
+	// preview the tiles hand over, watermark and all. It is per photo because it is
+	// per set — one archive can carry both.
+	const ordered = allowed
+		.slice()
+		.sort((a, b) => a.photo.sortIndex - b.photo.sortIndex)
+		.map(({ photo, downloads }) => ({
+			pid: photo.pid,
+			rev: photo.rev,
+			originalName: photo.originalName,
+			// `bytes` is the HD file's size, which is only an upper bound for a web
+			// entry. That is the safe direction: the zipper splits on it, so it may
+			// split earlier than needed but never produces an oversized part.
+			bytes: photo.bytes ?? 0,
+			variant: downloads.hd ? "hd" : "web"
+		}));
+
 	// The variant is part of what the archive *is*, so it belongs in the hash —
-	// otherwise turning HD off would keep serving the HD archive from cache, and
-	// turning it back on would serve the watermarked one. "hd" is left out of the
-	// digest so every archive built before this existed stays a cache hit.
-	const hash = createHash("sha1")
-		.update(variant === "hd" ? fingerprint : `${variant}:${fingerprint}`)
-		.digest("hex")
-		.slice(0, 16);
+	// otherwise turning HD off for a set would keep serving its HD archive from
+	// cache, and turning it back on would serve the watermarked one. "hd" contributes
+	// nothing to the digest, so every all-HD archive built before this existed stays
+	// a cache hit.
+	const fingerprint = ordered.map(photo => `${photo.pid}_${photo.rev}${photo.variant === "hd" ? "" : `:${photo.variant}`}`).join(",");
+	const hash = createHash("sha1").update(fingerprint).digest("hex").slice(0, 16);
+	const variant = ordered.every(photo => photo.variant === "hd") ? "hd" : ordered.every(photo => photo.variant === "web") ? "web" : "mixed";
+	// Recorded so pickup can re-check them: see assertJobDownloadable.
+	const setIds = [...new Set(allowed.map(entry => setOf(gallery, entry.photo)?.id ?? null))];
 
 	const origin = publicOrigin(request);
 	const cached = await cachedParts(gallery.id, hash);
 	const jid = newJobId();
 	const now = new Date().toISOString();
+
+	// Resolved now rather than at pickup: renaming a set later must not rewrite what
+	// the client was told they were downloading, nor the photographer's feed.
+	const scopeTitle = scopedSet === undefined ? "" : ((gallery.sets ?? []).find(set => set.id === scopedSet)?.title ?? "");
 
 	// A cache hit gets a job document too, even though nothing will ever run for
 	// it: the emailed link points at a job, and one shape for both paths is what
@@ -356,8 +444,13 @@ async function downloadZip({ request, params }) {
 		slug: gallery.slug,
 		hash,
 		variant,
+		setIds,
 		email: recipient,
-		kind: requested?.length ? "selection" : "all",
+		kind:
+			requested?.length ? "selection"
+			: scopedSet !== undefined ? "set"
+			: "all",
+		setTitle: scopeTitle,
 		status: cached ? "done" : "pending",
 		total: ordered.length,
 		done: cached ? ordered.length : 0,
@@ -380,17 +473,10 @@ async function downloadZip({ request, params }) {
 						gid: gallery.id,
 						slug: gallery.slug,
 						hash,
-						variant,
-						// `bytes` is the HD file's size, which is only an upper bound for a
-						// web-variant archive. That is the safe direction: the zipper uses it
-						// to decide where to split, so it may split earlier than needed but
-						// never produces an oversized part.
-						photos: ordered.map(photo => ({
-							pid: photo.pid,
-							rev: photo.rev,
-							originalName: photo.originalName,
-							bytes: photo.bytes ?? 0
-						}))
+						// The per-photo variant is what the zipper reads; this one is only the
+						// fallback for a photo that names none.
+						variant: variant === "mixed" ? "hd" : variant,
+						photos: ordered
 					})
 				)
 			})
@@ -401,7 +487,7 @@ async function downloadZip({ request, params }) {
 	let emailed = true;
 
 	try {
-		await mailArchiveLink({ gallery, recipient, link, origin, count: ordered.length, ready: Boolean(cached) });
+		await mailArchiveLink({ gallery, recipient, link, origin, count: ordered.length, ready: Boolean(cached), setTitle: scopeTitle });
 	} catch (error) {
 		// The build is already running and this response carries the same link, so a
 		// bounced or throttled send is worth reporting, not worth failing over.
@@ -409,7 +495,7 @@ async function downloadZip({ request, params }) {
 		emailed = false;
 	}
 
-	await recordDownload(downloadEvent({ gallery, email: recipient, kind: job.kind, count: ordered.length }));
+	await recordDownload(downloadEvent({ gallery, email: recipient, kind: job.kind, count: ordered.length, setTitle: scopeTitle }));
 
 	return json(cached ? 200 : 202, {
 		status: job.status,
@@ -469,7 +555,7 @@ async function readJob({ request, params }) {
 	// has to retract it here too, exactly as it does for the emailed link below.
 	await requireGalleryAccess(request, gallery.data);
 	assertAvailable(gallery.data);
-	assertDownloadable(gallery.data, "zip");
+	assertJobDownloadable(gallery.data, job);
 
 	return json(200, await jobProgress(job, request));
 }
@@ -497,11 +583,14 @@ async function readArchive({ request, params }) {
 	}
 
 	assertAvailable(gallery);
-	assertDownloadable(gallery, "zip");
+	assertJobDownloadable(gallery, job);
 
 	return json(200, {
 		title: gallery.title,
 		slug: gallery.slug,
+		// As it was named when the archive was asked for — several links for the same
+		// gallery are otherwise identical pages.
+		setTitle: job.setTitle ?? "",
 		...(await jobProgress(job, request))
 	});
 }
@@ -525,6 +614,8 @@ async function logDownload({ request, params }) {
 	if (!photo) {
 		throw notFound("Photo introuvable.");
 	}
+
+	assertPhotoDownloadable(gallery, photo);
 
 	await recordDownload(
 		downloadEvent({

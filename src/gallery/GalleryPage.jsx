@@ -9,6 +9,7 @@ import { GalleryCover } from "./GalleryCover.jsx";
 import { Lightbox } from "./Lightbox.jsx";
 import { PasswordGate } from "./PasswordGate.jsx";
 import { PhotoTile } from "./PhotoTile.jsx";
+import { SetTabs } from "./SetTabs.jsx";
 
 // Signed viewing cookies last 12h; renew well before that so a client who leaves
 // the tab open overnight never meets a wall of broken images.
@@ -16,6 +17,8 @@ const REFRESH_MARGIN_SECONDS = 30 * 60;
 const SELECTION_SAVE_DELAY_MS = 800;
 // What the cover's scroll cue aims at.
 const PHOTOS_ID = "photos";
+// The grid, as the tabs' panel.
+const PANEL_ID = "gallery-set-panel";
 
 /**
  * Saves a same-origin URL under a chosen name without navigating away.
@@ -48,6 +51,11 @@ export function GalleryPage() {
 	const [state, setState] = useState({ status: "loading", slug });
 	const [selection, setSelection] = useState([]);
 	const [lightboxIndex, setLightboxIndex] = useState(null);
+	// The open tab, carrying its slug the way `state` does so that a route change
+	// makes it stale by derivation rather than through an effect that resets it.
+	// `undefined` means "whatever the manifest lists first", which is not the same as
+	// `null` — that one is the tab of photos belonging to no set.
+	const [tab, setTab] = useState({ slug, id: undefined });
 	// The photo waiting on an email address before it downloads.
 	const [pendingPid, setPendingPid] = useState(null);
 	const saveTimerRef = useRef(null);
@@ -173,12 +181,35 @@ export function GalleryPage() {
 
 	// Memoised for its identity, not its cost: the download handler closes over the
 	// list, and a fresh array every render would rebuild every tile's callback.
-	const photos = useMemo(() => state.gallery?.photos ?? [], [state.gallery]);
+	const allPhotos = useMemo(() => state.gallery?.photos ?? [], [state.gallery]);
+	// Always at least one entry, even for a gallery that has no sets — the API sends
+	// the ungrouped photos as a set of their own, so there is nothing to special-case.
+	const sets = useMemo(() => state.gallery?.sets ?? [], [state.gallery]);
+	// An id the manifest no longer lists — a set deleted while the page was open, or a
+	// tab held over from another gallery — falls back to the first tab rather than to
+	// an empty gallery.
+	const activeSet = (tab.slug === slug ? sets.find(set => set.id === tab.id) : null) ?? sets[0] ?? null;
+	const activeId = activeSet?.id ?? null;
+	// The API stamps every photo with the set it was actually placed in, so this is an
+	// exact split — and a no-op when there is a single tab.
+	const photos = useMemo(() => allPhotos.filter(photo => (photo.setId ?? null) === activeId), [allPhotos, activeId]);
 	const favourites = useMemo(() => new Set(selection), [selection]);
+	// Each set carries its own switches; the gallery's own cover the ungrouped photos
+	// and are the fallback for a manifest that predates sets.
+	const downloads = activeSet?.downloads ?? state.gallery?.downloads ?? { enabled: false, hd: false, zip: false };
 	// Whether the client takes home the full-resolution file. The button is offered
 	// either way: with HD off the watermarked web preview is what they get, which is
 	// still better than a gallery with no way to keep a photo at all.
-	const hd = Boolean(state.gallery?.downloads?.hd);
+	const hd = Boolean(downloads.hd);
+
+	// A favourite may sit in a set whose downloads are off, and the archive route
+	// silently drops those — so they are dropped here too, where the count is shown.
+	const downloadableSelection = useMemo(() => {
+		const open = new Set(sets.filter(set => set.downloads?.enabled).map(set => set.id ?? null));
+		const placement = new Map(allPhotos.map(photo => [photo.pid, photo.setId ?? null]));
+
+		return selection.filter(pid => placement.has(pid) && open.has(placement.get(pid)));
+	}, [allPhotos, selection, sets]);
 
 	/**
 	 * Hands the photo over, having told the photographer who is taking it.
@@ -200,17 +231,18 @@ export function GalleryPage() {
 				return;
 			}
 
-			const index = photos.findIndex(photo => photo.pid === pid);
+			const index = allPhotos.findIndex(photo => photo.pid === pid);
 
 			if (index === -1) {
 				return;
 			}
 
 			// Numbered by position rather than by pid: an opaque id makes for a
-			// baffling filename in a download folder.
-			saveAs(photos[index].web, `${slug}-${index + 1}.webp`);
+			// baffling filename in a download folder. Numbered across the whole gallery
+			// rather than within the tab, so two sets cannot both produce a "-1".
+			saveAs(allPhotos[index].web, `${slug}-${index + 1}.webp`);
 		},
-		[hd, photos, slug]
+		[allPhotos, hd, slug]
 	);
 
 	// Asked once per browser: a prompt in front of every tile would be intolerable,
@@ -288,8 +320,10 @@ export function GalleryPage() {
 
 	const { gallery } = state;
 	// coverPid is only a hint: it can be absent from an older manifest, so the first
-	// photo stands in rather than leaving the cover imageless.
-	const cover = photos.find(photo => photo.pid === gallery.coverPid) ?? photos[0] ?? null;
+	// photo stands in rather than leaving the cover imageless. Taken from the whole
+	// gallery, not the open tab — the cover belongs to the gallery, and one that
+	// changed as the client switched tabs underneath it would be a glitch.
+	const cover = allPhotos.find(photo => photo.pid === gallery.coverPid) ?? allPhotos[0] ?? null;
 
 	return (
 		<div className='gallery-view'>
@@ -309,16 +343,38 @@ export function GalleryPage() {
 
 			<main id={PHOTOS_ID} className='gallery-view__body'>
 				<div className='gallery-view__bar'>
-					<p className='gallery-view__count'>
-						{photos.length} photo{photos.length > 1 ? "s" : ""}
-					</p>
+					<span>
+						<p className='gallery-view__eyebrow'>ANKAA STUDIO</p>
 
-					<DownloadPanel slug={slug} downloads={gallery.downloads} photoCount={photos.length} selection={selection} />
+						<SetTabs
+							sets={sets}
+							activeId={activeId}
+							panelId={PANEL_ID}
+							// The open lightbox belongs to the tab that was showing; keeping its
+							// index would land on an unrelated photo, or on none at all.
+							onSelect={id => {
+								setTab({ slug, id });
+								setLightboxIndex(null);
+							}}
+						/>
+					</span>
+
+					<DownloadPanel
+						slug={slug}
+						downloads={downloads}
+						photoCount={photos.length}
+						selection={downloadableSelection}
+						// Scoped to the open tab only when there is more than one: a single
+						// tab is the whole gallery, and saying so keeps the photographer's
+						// feed reading "toute la galerie" as before.
+						setId={sets.length > 1 ? activeId : undefined}
+						setTitle={sets.length > 1 ? activeSet?.title : ""}
+					/>
 				</div>
 
 				{photos.length === 0 ?
 					<p className='gallery-view__status gallery-view__status--empty'>Les photos arrivent bientôt.</p>
-				:	<div className='photo-grid'>
+				:	<div className='photo-grid' id={PANEL_ID} role={sets.length > 1 ? "tabpanel" : undefined} aria-labelledby={sets.length > 1 ? `set-tab-${activeId ?? "default"}` : undefined}>
 						{photos.map((photo, index) => (
 							<PhotoTile
 								key={photo.pid}
@@ -326,7 +382,7 @@ export function GalleryPage() {
 								index={index}
 								isFavourite={favourites.has(photo.pid)}
 								showFavourites
-								showDownload={gallery.downloads.enabled}
+								showDownload={downloads.enabled}
 								onOpen={setLightboxIndex}
 								onToggleFavourite={toggleFavourite}
 								onDownload={downloadPhoto}
@@ -336,11 +392,13 @@ export function GalleryPage() {
 				}
 			</main>
 
-			{lightboxIndex !== null ?
+			{/* The index belongs to the list that was on screen when the tile was opened;
+			    a route change can outlive it, so the photo has to still be there. */}
+			{lightboxIndex !== null && photos[lightboxIndex] ?
 				<Lightbox
 					photos={photos}
 					index={lightboxIndex}
-					downloads={gallery.downloads}
+					downloads={downloads}
 					isFavourite={favourites.has(photos[lightboxIndex]?.pid)}
 					showFavourites
 					onClose={() => setLightboxIndex(null)}

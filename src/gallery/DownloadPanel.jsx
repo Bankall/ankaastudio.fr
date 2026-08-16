@@ -17,8 +17,12 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
  * The email is asked for every time rather than reused silently: it is the address
  * the link is sent to, and a client who wants it somewhere else must be able to say
  * so. It is only prefilled with whatever was typed last.
+ *
+ * `downloads` and `photoCount` describe the open set, not the gallery: each set has
+ * its own switches, so the archive button follows the tab. `setId` scopes it, and
+ * `undefined` means the gallery as a whole.
  */
-export function DownloadPanel({ slug, downloads, photoCount, selection }) {
+export function DownloadPanel({ slug, downloads, photoCount, selection, setId, setTitle = "" }) {
 	const [job, setJob] = useState(null);
 	const [error, setError] = useState("");
 	const [scope, setScope] = useState(null);
@@ -43,7 +47,7 @@ export function DownloadPanel({ slug, downloads, photoCount, selection }) {
 		};
 	}, []);
 
-	const start = async ({ pids, label }, address) => {
+	const start = async ({ pids, scope: requestedSet, label }, address) => {
 		setError("");
 		setScope(label);
 		setRecipient(address);
@@ -53,7 +57,7 @@ export function DownloadPanel({ slug, downloads, photoCount, selection }) {
 		setJob({ status: "pending", done: 0, total: pids?.length || photoCount });
 
 		try {
-			const response = await galleryApi.requestZip(slug, pids ?? [], address);
+			const response = await galleryApi.requestZip(slug, pids ?? [], address, requestedSet);
 
 			if (!liveRef.current) {
 				return;
@@ -99,7 +103,7 @@ export function DownloadPanel({ slug, downloads, photoCount, selection }) {
 			}
 
 			setJob(null);
-			setError(failure.status === 403 ? "Les téléchargements sont désactivés pour cette galerie." : "Impossible de préparer l’archive.");
+			setError(failure.status === 403 ? "Les téléchargements sont désactivés pour ces photos." : "Impossible de préparer l’archive.");
 		}
 	};
 
@@ -110,28 +114,31 @@ export function DownloadPanel({ slug, downloads, photoCount, selection }) {
 		start(request, address);
 	};
 
-	if (!downloads.enabled) {
+	// A selection can span sets, so it survives a tab whose own downloads are off —
+	// the caller has already dropped whatever is not downloadable from it.
+	if (!downloads.enabled && selection.length === 0) {
 		return null;
 	}
 
 	const busy = job?.status === "pending" || job?.status === "running";
 	const progress = busy && job.total ? Math.round((job.done / job.total) * 100) : 0;
+	const scopeLabel = setTitle ? `l’ensemble « ${setTitle} »` : "toutes les photos";
 
 	return (
 		<div className='download-panel'>
 			<div className='download-panel__actions'>
-				{downloads.zip ?
+				{downloads.enabled ?
 					<button
 						className='button'
 						type='button'
-						onClick={() => setPending({ pids: [], label: "toutes les photos" })}
+						onClick={() => setPending({ pids: [], scope: setId, label: scopeLabel })}
 						disabled={busy || photoCount === 0}
 					>
-						Tout télécharger ({photoCount})
+						{setTitle ? "Télécharger cet ensemble" : "Tout télécharger"} ({photoCount})
 					</button>
 				:	null}
 
-				{downloads.zip && selection.length > 0 ?
+				{selection.length > 0 ?
 					<button
 						className='button-secondary'
 						type='button'

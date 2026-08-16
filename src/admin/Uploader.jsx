@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { adminApi, uploadToS3 } from "../utils/galleryApi.js";
+import { DEFAULT_SET_TITLE } from "../utils/gallerySets.js";
 
 // Four at a time: enough to saturate a domestic upstream, few enough that each
 // file's progress bar still moves visibly.
@@ -46,11 +47,14 @@ async function mapWithLimit(items, limit, task) {
 	return results;
 }
 
-export function Uploader({ gid, archived = false, onUploaded }) {
+export function Uploader({ gid, sets = [], archived = false, onUploaded }) {
 	const [items, setItems] = useState([]);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
 	const [dragging, setDragging] = useState(false);
+	// Which set the next drop lands in. Chosen before the drop rather than fixed up
+	// afterwards, because a 200-photo batch is painful to re-file one tile at a time.
+	const [target, setTarget] = useState("");
 	const inputRef = useRef(null);
 	const abortRef = useRef(null);
 
@@ -74,6 +78,9 @@ export function Uploader({ gid, archived = false, onUploaded }) {
 
 			setItems(queued);
 
+			// The set may have been deleted between choosing it and dropping the files,
+			// and the API rejects an id it does not know; the gallery itself always exists.
+			const destination = sets.some(set => set.id === target) ? target : null;
 			const uploaded = [];
 
 			try {
@@ -114,7 +121,7 @@ export function Uploader({ gid, archived = false, onUploaded }) {
 					const fresh = uploaded.splice(0, uploaded.length);
 
 					if (fresh.length > 0) {
-						await adminApi.processPhotos(gid, fresh);
+						await adminApi.processPhotos(gid, fresh, destination);
 						setItems(current => current.map(item => (item.status === "processing" ? { ...item, status: "done" } : item)));
 					}
 				}
@@ -127,7 +134,7 @@ export function Uploader({ gid, archived = false, onUploaded }) {
 				abortRef.current = null;
 			}
 		},
-		[gid, onUploaded, patchItem]
+		[gid, sets, target, onUploaded, patchItem]
 	);
 
 	const handleFiles = fileList => {
@@ -143,6 +150,20 @@ export function Uploader({ gid, archived = false, onUploaded }) {
 
 	return (
 		<div className='admin-uploader'>
+			{sets.length > 0 ?
+				<div className='admin-uploader__target'>
+					<label htmlFor='upload-target'>Envoyer dans</label>
+					<select id='upload-target' value={target} disabled={busy} onChange={event => setTarget(event.target.value)}>
+						<option value=''>{DEFAULT_SET_TITLE} (hors ensemble)</option>
+						{sets.map(set => (
+							<option key={set.id} value={set.id}>
+								{set.title}
+							</option>
+						))}
+					</select>
+				</div>
+			:	null}
+
 			{/* A label wrapping the input keeps the whole zone clickable without a
 			    click handler faking it. */}
 			<label

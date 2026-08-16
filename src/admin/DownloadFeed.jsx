@@ -7,6 +7,7 @@ const POLL_INTERVAL_MS = 60000;
 
 const KIND_LABELS = {
 	all: "a téléchargé toutes les photos",
+	set: "a téléchargé un ensemble",
 	selection: "a téléchargé sa sélection",
 	photo: "a téléchargé une photo"
 };
@@ -19,6 +20,11 @@ const countUnseen = log => log.events.filter(event => !log.seenAt || event.at > 
 
 function describe(event) {
 	const action = KIND_LABELS[event.kind] ?? "a téléchargé des photos";
+
+	if (event.kind === "set") {
+		// The name is what the photographer recognises; the count says how much of it.
+		return `${event.setTitle ? `a téléchargé l’ensemble « ${event.setTitle} »` : action} (${event.count} photo${event.count > 1 ? "s" : ""})`;
+	}
 
 	if (event.kind === "selection") {
 		return `${action} (${event.count} photo${event.count > 1 ? "s" : ""})`;

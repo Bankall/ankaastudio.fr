@@ -34,6 +34,18 @@ export const WATERMARK_KEY = "assets/watermark.png";
 export const WATERMARK_MODES = ["preview", "all", "none"];
 export const GALLERY_STATUSES = ["draft", "published", "archived"];
 
+// Sets are named groups of photos inside a gallery, shown to the client as tabs,
+// each with its own download switches. They are optional: a photo that belongs to
+// no set is served under the gallery's own switches, which is what every photo did
+// before sets existed — so nothing needs migrating.
+//
+// The title given to that ungrouped remainder, on the rare occasion it is shown
+// next to real sets.
+export const DEFAULT_SET_TITLE = "Galerie";
+// Enough for any shoot that is worth splitting; low enough that the tab bar stays
+// a tab bar rather than a menu.
+export const MAX_SETS = 30;
+
 // A photo's own state, which is not the gallery's:
 //   processing — uploaded, derivatives not written yet
 //   ready      — derivatives exist and may be served
@@ -57,13 +69,36 @@ export function newGallery({ id, slug, title, clientName = "", clientEmail = "",
 		// null password = anyone holding the link gets in.
 		password: null,
 		watermark: "preview",
+		// The master switch, plus the settings an ungrouped photo is served under.
+		// A set overrides them for its own photos.
 		downloadsEnabled: true,
 		hdEnabled: true,
-		zipEnabled: true,
 		expiresAt: null,
+		sets: [],
 		photos: [],
 		createdAt: now,
 		updatedAt: now
+	};
+}
+
+/**
+ * A named group of photos, with its own download switches.
+ *
+ * The array order is the tab order — there is no sortIndex, because a handful of
+ * sets reorder by rewriting the array and a second source of truth for something
+ * this small only invites the two to disagree.
+ *
+ * `downloadsEnabled` starts true and `hdEnabled` copies the gallery's, so a fresh
+ * set behaves exactly like the gallery it was created in until it is told
+ * otherwise. The gallery's own `downloadsEnabled` remains the master: a set can
+ * refuse what the gallery allows, never the other way round.
+ */
+export function newSet({ id, title, hdEnabled = true }) {
+	return {
+		id,
+		title,
+		downloadsEnabled: true,
+		hdEnabled: Boolean(hdEnabled)
 	};
 }
 
@@ -75,7 +110,7 @@ export function newGallery({ id, slug, title, clientName = "", clientEmail = "",
  * polling. `queuedAt` is what lets reconcile tell a photo that is still being
  * processed from one whose processor never came back.
  */
-export function pendingPhoto({ pid, extension, originalName = "" }, sortIndex, rev = 1) {
+export function pendingPhoto({ pid, extension, originalName = "", setId = null }, sortIndex, rev = 1) {
 	return {
 		pid,
 		rev,
@@ -84,6 +119,7 @@ export function pendingPhoto({ pid, extension, originalName = "" }, sortIndex, r
 		status: "processing",
 		queuedAt: new Date().toISOString(),
 		caption: null,
+		setId,
 		sortIndex
 	};
 }
@@ -99,7 +135,7 @@ export function pendingPhoto({ pid, extension, originalName = "" }, sortIndex, r
  * like every other photo: reprocess bumps them to 2 and writes the derivative
  * keys the record already expects.
  */
-export function archivedPhoto({ pid, extension, originalName = "" }, sortIndex) {
+export function archivedPhoto({ pid, extension, originalName = "", setId = null }, sortIndex) {
 	return {
 		pid,
 		rev: 1,
@@ -108,6 +144,7 @@ export function archivedPhoto({ pid, extension, originalName = "" }, sortIndex) 
 		status: "archived",
 		queuedAt: null,
 		caption: null,
+		setId,
 		sortIndex
 	};
 }
@@ -124,6 +161,76 @@ export function coverPhoto(gallery) {
 }
 
 const readyPhotos = gallery => (gallery.photos ?? []).filter(photo => photo.status === "ready").sort((a, b) => a.sortIndex - b.sortIndex);
+
+// --- sets ------------------------------------------------------------------
+
+/**
+ * The set a photo belongs to, or null.
+ *
+ * Null covers three cases that all want the same answer — never grouped, grouped
+ * into a set that has since been deleted, or uploaded before sets existed — so a
+ * dangling `setId` degrades to the gallery's own settings instead of to nothing.
+ */
+export function setOf(gallery, photo) {
+	if (!photo?.setId) {
+		return null;
+	}
+
+	return (gallery.sets ?? []).find(set => set.id === photo.setId) ?? null;
+}
+
+/**
+ * What a set permits. With no set, what the gallery permits.
+ *
+ * The gallery's `downloadsEnabled` is checked in both branches because it is the
+ * master switch — it is what the admin list badge reports and what the infra
+ * guarantees, so a set must not be able to open a door the gallery has shut. HD is
+ * the set's own call: that is the point of having them.
+ *
+ * `zip` is not a switch of its own. A client who may save every photo one by one
+ * gains nothing from being refused the single request that does it in one file, so
+ * the archive simply follows `enabled`.
+ */
+export function downloadsFor(gallery, set) {
+	const enabled = Boolean(gallery.downloadsEnabled) && (set ? Boolean(set.downloadsEnabled) : true);
+
+	return {
+		enabled,
+		hd: enabled && Boolean(set ? set.hdEnabled : gallery.hdEnabled),
+		zip: enabled
+	};
+}
+
+export const photoDownloads = (gallery, photo) => downloadsFor(gallery, setOf(gallery, photo));
+
+/**
+ * Photos distributed into their sets, in tab order.
+ *
+ * The ungrouped ones lead, under a synthetic `null` set: a gallery that predates
+ * sets has all of its photos there, and so does one whose photographer has only
+ * grouped part of it. That group is dropped once it is empty and real sets exist,
+ * so a fully grouped gallery shows no leftover tab — but a gallery with no sets at
+ * all always yields exactly one group, which is what lets every caller treat the
+ * "no sets" case as "one set" and stop special-casing it.
+ *
+ * `keepEmpty` is the difference between the two audiences: the admin has to see a
+ * set it has just created and not yet filled, the client has no use for a tab with
+ * nothing behind it.
+ */
+export function groupBySet(gallery, photos, { keepEmpty = false } = {}) {
+	const sets = gallery.sets ?? [];
+	const buckets = new Map(sets.map(set => [set.id, []]));
+	const ungrouped = [];
+
+	for (const photo of photos) {
+		(buckets.get(photo.setId) ?? ungrouped).push(photo);
+	}
+
+	return [
+		...(ungrouped.length > 0 || sets.length === 0 ? [{ set: null, photos: ungrouped }] : []),
+		...sets.filter(set => keepEmpty || buckets.get(set.id).length > 0).map(set => ({ set, photos: buckets.get(set.id) }))
+	];
+}
 
 /**
  * The cover as the client will actually see it.
@@ -163,14 +270,14 @@ const previewPaths = (gallery, photo) => ({
  * because a client sent one that 403s would open on a broken hero image.
  */
 export function clientProjection(gallery, { cleanCover = false } = {}) {
-	const downloads = {
-		enabled: Boolean(gallery.downloadsEnabled),
-		hd: Boolean(gallery.downloadsEnabled && gallery.hdEnabled),
-		zip: Boolean(gallery.downloadsEnabled && gallery.zipEnabled)
-	};
-
 	const photos = readyPhotos(gallery);
 	const cover = readyCover(gallery);
+	const groups = groupBySet(gallery, photos);
+	// Each photo is told the group it was actually placed in rather than the id the
+	// record holds: a `setId` left behind by a deleted set resolves to the ungrouped
+	// tab here, and a client taking the record at its word would file that photo
+	// under a tab that is not in the list.
+	const placement = new Map(groups.flatMap(group => group.photos.map(photo => [photo.pid, group.set?.id ?? null])));
 
 	return {
 		slug: gallery.slug,
@@ -182,9 +289,20 @@ export function clientProjection(gallery, { cleanCover = false } = {}) {
 		// Absent rather than null-and-guess: the client falls back to the marked
 		// preview, which is always there.
 		coverImage: cleanCover && cover ? `/${coverImageKey(gallery.id, cover.pid, cover.rev)}` : null,
-		downloads,
+		// The gallery's own answer: what an ungrouped photo is served under, and the
+		// only one a gallery with no sets ever needs.
+		downloads: downloadsFor(gallery, null),
+		// Always at least one entry, so the client renders tabs when there are several
+		// and nothing at all when there is one.
+		sets: groups.map(group => ({
+			id: group.set?.id ?? null,
+			title: group.set?.title ?? DEFAULT_SET_TITLE,
+			downloads: downloadsFor(gallery, group.set),
+			photoCount: group.photos.length
+		})),
 		photos: photos.map(photo => ({
 			pid: photo.pid,
+			setId: placement.get(photo.pid) ?? null,
 			w: photo.w,
 			h: photo.h,
 			lqip: photo.lqip ?? null,
@@ -201,11 +319,15 @@ export function adminProjection(gallery) {
 	return {
 		...rest,
 		hasPassword: Boolean(password),
+		sets: gallery.sets ?? [],
 		photos: (gallery.photos ?? [])
 			.slice()
 			.sort((a, b) => a.sortIndex - b.sortIndex)
 			.map(photo => ({
 				...photo,
+				// Normalised the same way the client's is, so the grid groups a photo
+				// under the tab the client will actually find it in.
+				setId: setOf(gallery, photo)?.id ?? null,
 				...(photo.status === "ready" ? previewPaths(gallery, photo) : { thumb: null, web: null })
 			}))
 	};
