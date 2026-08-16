@@ -975,9 +975,9 @@ button {
 .field textarea {
 	width: 100%;
 	min-height: 3rem;
-	padding: 0.9rem 1rem;
+	padding: 0.5rem 1rem;
 	border: 1px solid var(--line-strong);
-	border-radius: 18px;
+	border-radius: var(--radius-md);
 	background: rgba(255, 255, 255, 0.88);
 	color: var(--text);
 	outline: none;
@@ -1464,7 +1464,6 @@ button {
 .gallery-tabs {
 	display: flex;
 	gap: 0.35rem;
-	padding-top: 1.6rem;
 	overflow-x: auto;
 	scrollbar-width: none;
 }
@@ -1479,12 +1478,11 @@ button {
 	align-items: baseline;
 	gap: 0.45rem;
 	padding: 0.5rem 1rem;
-	border: 1px solid transparent;
-	border-radius: 999px;
+	border-bottom: 1px solid transparent;
 	color: var(--muted);
 	cursor: pointer;
 	transition:
-		background 160ms ease-out,
+		border 160ms ease-out,
 		color 160ms ease-out;
 }
 
@@ -1499,6 +1497,12 @@ button {
 	color: var(--text);
 }
 
+.gallery-tabs__title {
+	text-transform: uppercase;
+	font-size: 0.75rem;
+	font-weight: 400;
+}
+
 .gallery-tabs__count {
 	font-size: 0.72rem;
 	color: var(--muted);
@@ -1508,7 +1512,6 @@ button {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	justify-content: space-between;
 	font-size: 0.875rem;
 	position: sticky;
 	z-index: 10;
@@ -1845,6 +1848,7 @@ button {
 
 .download-panel {
 	margin-top: 1.6rem;
+	flex: 1 0 auto;
 	display: flex;
 	flex-direction: column;
 	gap: 0.8rem;
@@ -1918,7 +1922,7 @@ button {
 	padding: 1.8rem;
 	background: var(--surface-strong);
 	border: 1px solid var(--line);
-	border-radius: var(--radius-lg);
+	border-radius: var(--radius-sm);
 	box-shadow: 0 30px 90px rgba(0, 0, 0, 0.32);
 	text-align: left;
 }
@@ -1950,7 +1954,7 @@ button {
 	padding: 2.4rem 2rem;
 	background: var(--surface-strong);
 	border: 1px solid var(--line);
-	border-radius: var(--radius-lg);
+	border-radius: var(--radius-sm);
 	box-shadow: var(--shadow);
 }
 

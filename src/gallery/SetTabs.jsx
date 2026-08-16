@@ -11,8 +11,12 @@ import { useRef } from "react";
  * Real tab semantics, which means the arrow keys have to work and only the current
  * tab may be in the tab order: with a dozen sets, tabbing through every one of them
  * to reach the photos is worse than no roles at all.
+ *
+ * `sectionId` is the photos section the tabs sit in, brought back into view on a
+ * click: a client who has scrolled deep into one set and picks another would
+ * otherwise land halfway down a grid that has just been replaced.
  */
-export function SetTabs({ sets, activeId, panelId, onSelect }) {
+export function SetTabs({ sets, activeId, panelId, sectionId, onSelect }) {
 	const listRef = useRef(null);
 
 	if (sets.length < 2) {
@@ -26,6 +30,19 @@ export function SetTabs({ sets, activeId, panelId, onSelect }) {
 		// The freshly selected tab is the only focusable one, so hand the focus over
 		// once React has swapped the tabindexes.
 		requestAnimationFrame(() => listRef.current?.querySelector('[aria-selected="true"]')?.focus());
+	};
+
+	const handleClick = id => {
+		onSelect(id);
+		// After the commit, not during the click: swapping the grid relayouts the page
+		// under a smooth scroll already in flight and the browser drops it part of the
+		// way up. By the next frame the new tiles are in place — their aspect ratios
+		// come from the manifest, so the page is its final height before a single photo
+		// has loaded — and the glide runs to the end.
+		//
+		// The keyboard path leaves this alone: it moves the focus to the tab, which the
+		// browser scrolls to on its own.
+		requestAnimationFrame(() => document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" }));
 	};
 
 	const handleKeyDown = event => {
@@ -64,10 +81,8 @@ export function SetTabs({ sets, activeId, panelId, onSelect }) {
 						aria-controls={panelId}
 						tabIndex={selected ? 0 : -1}
 						className={`gallery-tabs__tab${selected ? " is-active" : ""}`}
-						onClick={() => onSelect(set.id)}
-					>
+						onClick={() => handleClick(set.id)}>
 						<span className='gallery-tabs__title'>{set.title}</span>
-						<span className='gallery-tabs__count'>{set.photoCount}</span>
 					</button>
 				);
 			})}

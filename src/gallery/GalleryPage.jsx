@@ -343,21 +343,20 @@ export function GalleryPage() {
 
 			<main id={PHOTOS_ID} className='gallery-view__body'>
 				<div className='gallery-view__bar'>
-					<span>
-						<p className='gallery-view__eyebrow'>ANKAA STUDIO</p>
+					<p className='gallery-view__eyebrow'>ANKAA STUDIO</p>
 
-						<SetTabs
-							sets={sets}
-							activeId={activeId}
-							panelId={PANEL_ID}
-							// The open lightbox belongs to the tab that was showing; keeping its
-							// index would land on an unrelated photo, or on none at all.
-							onSelect={id => {
-								setTab({ slug, id });
-								setLightboxIndex(null);
-							}}
-						/>
-					</span>
+					<SetTabs
+						sets={sets}
+						activeId={activeId}
+						panelId={PANEL_ID}
+						sectionId={PHOTOS_ID}
+						// The open lightbox belongs to the tab that was showing; keeping its
+						// index would land on an unrelated photo, or on none at all.
+						onSelect={id => {
+							setTab({ slug, id });
+							setLightboxIndex(null);
+						}}
+					/>
 
 					<DownloadPanel
 						slug={slug}
