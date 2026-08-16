@@ -55,6 +55,16 @@ Parameters:
         Default: /ankaa/gallery
         Description: SSM Parameter Store prefix holding the secrets written by infra/bootstrap.sh.
 
+    DevUploadOrigin:
+        Type: String
+        Default: http://localhost:5173
+        Description: >
+            Extra origin allowed to POST presigned upload forms to the media
+            bucket, for `npm run dev`. Vite proxies /api and /media, so the
+            uploader's direct-to-S3 POST is the only dev call that leaves
+            localhost — without this it fails the CORS preflight. Set empty to
+            allow production origins only.
+
     ProcessorReservedConcurrency:
         Type: Number
         Default: 0
@@ -67,6 +77,7 @@ Parameters:
 
 Conditions:
     HasCustomDomain: !Not [!Equals [!Ref CertificateArn, ""]]
+    HasDevUploadOrigin: !Not [!Equals [!Ref DevUploadOrigin, ""]]
     HasProcessorReservation: !Not [!Equals [!Ref ProcessorReservedConcurrency, 0]]
 
 Globals:
@@ -136,6 +147,12 @@ Resources:
                           # referenced as !GetAtt: the distribution already depends on
                           # this bucket, so that would be a circular dependency.
                           - "https://*.cloudfront.net"
+                          # The Vite dev server. Listing it costs nothing: the form
+                          # still has to be signed by the API, which needs an admin
+                          # session, and CORS only decides who may read the answer —
+                          # so this widens no access, it only lets the browser show
+                          # the uploader the result instead of a preflight error.
+                          - !If [HasDevUploadOrigin, !Ref DevUploadOrigin, !Ref "AWS::NoValue"]
                       # The POST carries no header worth naming — FormData's
                       # Content-Type is CORS-safelisted — but a header the rule does
                       # not cover fails the preflight with no useful diagnostic.

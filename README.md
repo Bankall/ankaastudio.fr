@@ -14,6 +14,12 @@ la distribution CloudFront déployée (voir `vite.config.js`). Les galeries, l�
 et les envois de photos fonctionnent donc en local, mais sur les vraies données de
 production. Pour viser une autre distribution, poser `DEV_ORIGIN` dans `.env`.
 
+Seul l’envoi de photos échappe au proxy : le formulaire présigné part directement
+vers le bucket S3, qui doit donc autoriser l’origine du serveur de dev. Le
+paramètre `DevUploadOrigin` de la stack l’autorise par défaut sur
+`http://localhost:5173` ; sur un autre port, poser `DEV_UPLOAD_ORIGIN` dans
+`infra/.env.deploy` et redéployer (`infra/deploy.sh`).
+
 ## Production
 
 ```bash

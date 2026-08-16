@@ -68,6 +68,7 @@ echo "→ Deploying stack $STACK_NAME ..."
 	"CloudFrontKeyPairId=$CF_KEY_PAIR_ID" \
 	"SenderEmail=${SENDER_EMAIL:-contact@ankaastudio.fr}" \
 	"SsmPrefix=${SSM_PREFIX:-/ankaa/gallery}" \
+	"DevUploadOrigin=${DEV_UPLOAD_ORIGIN-http://localhost:5173}" \
 	"ProcessorReservedConcurrency=${PROCESSOR_RESERVED_CONCURRENCY:-0}"
 
 DIST_ID="$(stack_output DistributionId)"
