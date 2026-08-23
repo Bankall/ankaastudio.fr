@@ -6,6 +6,7 @@ export const siteConfig = {
 	regionLabel: "Reims et dans la Marne",
 	message: "Des images naturelles et sincères qui racontent votre histoire.",
 	contactEmail: "sophie.marache@gmail.com",
+	heroImage: "https://ankaastudio.fr/hero-background.min.jpg",
 	instagramUrl: "https://www.instagram.com/studio_ankaa",
 	facebookUrl: "https://www.facebook.com/profile.php?id=61589453120077",
 	calendlyUrl: "https://calendly.com/ankaa-studio"
@@ -13,11 +14,11 @@ export const siteConfig = {
 
 export const navigation = [
 	{ href: "/", label: "Accueil" },
+	{ href: "/a-propos", label: "Qui suis-je ?" },
 	{ href: "/portfolio", label: "Portfolio" },
 	{ href: "/tarifs", label: "Tarifs" },
-	{ href: "/contact", label: "Contact" }
-	//{ href: '/a-propos', label: 'À propos' }
-	//{ href: "/blog", label: "Blog" }
+	{ href: "/contact", label: "Contact" },
+	{ href: "/conditions-generales-vente", label: "CGV" }
 ];
 
 export const socialLinks = [
@@ -25,53 +26,65 @@ export const socialLinks = [
 	{ label: "Facebook", href: siteConfig.facebookUrl }
 ];
 
-export const heroStats = [
-	{ value: "100%", label: "Séances sur mesure" },
-	{ value: "4", label: "Univers photo" },
-	{ value: "1", label: "Expérience complice" }
-];
-
-export const valueCards = [
+export const photographyCards = [
 	{
-		title: "Douceur",
-		text: "Une approche rassurante pour révéler la personnalité du chien sans contrainte.",
-		icon: "✦"
+		url: "/home/Capture d’écran 2026-08-17 à 16.36.32.png",
+		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		title: "Émotion",
-		text: "Des images vraies, sensibles et élégantes pour raconter des liens sincères.",
-		icon: "◌"
+		url: "/home/Capture d’écran 2026-08-17 à 16.37.02.png",
+		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		title: "Direction artistique",
-		text: "Une esthétique minimaliste et raffinée pour valoriser les sujets et les gestes.",
-		icon: "◇"
+		url: "/home/Capture d’écran 2026-08-17 à 16.37.58.png",
+		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		title: "Accompagnement",
-		text: "Du brief à la livraison, chaque séance est pensée comme une expérience fluide.",
-		icon: "▣"
+		url: "/home/Capture d’écran 2026-08-17 à 16.45.33.png",
+		text: "Portrait d’un chien dans une lumière douce"
 	}
 ];
 
-export const servicesPreview = [
+export const designCards = [
 	{
-		title: "Chiens",
-		text: "Portraits artistiques, scènes de liberté et détails de caractère.",
-		image: "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=900&q=80",
-		alt: "Portrait d’un chien dans une lumière douce"
+		url: "/home/Capture d’écran 2026-08-17 à 16.36.32.png",
+		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		title: "Humains & chiens",
-		text: "Des liens authentiques entre complicité, gestes tendres et regards partagés.",
-		image: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=900&q=80",
-		alt: "Personne avec son chien lors d’une séance en extérieur"
+		url: "/home/Capture d’écran 2026-08-17 à 16.37.02.png",
+		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		title: "Chiots",
-		text: "Des souvenirs frais, tendres et joyeux pour les premiers mois de vie.",
-		image: "https://images.unsplash.com/photo-1517423440428-a5a00ad493e8?auto=format&fit=crop&w=900&q=80",
-		alt: "Chiot observant l’objectif dans un décor lumineux"
+		url: "/home/Capture d’écran 2026-08-17 à 16.37.58.png",
+		text: "Portrait d’un chien dans une lumière douce"
+	}
+];
+
+export const testimonials = [
+	{
+		quote: "J’ai rencontré Sophie par hasard lors d’un événement. J’ai adoré les photos qu’elle a prises à cette occasion et ai alors suivi sa page. Et j’ai tout de suite accroché aux photos partagées : j’avais l’impression d’y être. J’ai donc choisi de lui confier le shooting d’Alaska ainsi que pour nos 10 ans avec mon conjoint. Et le rendu est exceptionnel : je n’ai pas su choisir tellement elles sont magnifiques. Elle ne partage pas seulement une image : une réelle émotion se dégage de ses photos.<br/>Encore merci Sophie, et à très vite pour un nouveau shooting ! 📸",
+		name: "Mélody Hunter",
+		avatar: "/testimonials/melody-hunter.jpg"
+	},
+	{
+		quote: "Tellement heureuse d’avoir fait confiance à Sophie pour immortaliser de précieux instants avec ma Naïa. Beaucoup d’amour, de douceur, de bienveillance et de professionnalisme pendant le shooting. Résultat : de magnifiques photos qui reflètent la douceur et le brin de folie de ma compagne à 4 pattes !",
+		name: "Anne Claire Dvl",
+		avatar: "/testimonials/anne-claire-dvl.jpg"
+	},
+	{
+		quote: "Il ne faut pas hésiter à faire un shooting photo avec elle, les photos sont sublimes. Elle est douce donc met à l’aise les chiens sensibles. Une très bonne expérience pour mes chiens et moi.",
+		name: "Elodie Elo",
+		avatar: "/testimonials/elodie-elo.jpg"
+	},
+	{
+		quote: "Sophie avec son joli coup d’œil a régulièrement shooté mon Saïan. Amoureuse des animaux, elle sait faire ressortir le meilleur d’eux avec beaucoup de douceur et de respect de leurs besoins. On adore !",
+		name: "Stephanie Sauvage Goncalves Hubas",
+		avatar: "/testimonials/stephanie-sauvage.jpg"
+	},
+	{
+		quote: "Super expérience avec Ankaa Studio. Elle met vite à l’aise et s’adapte vraiment bien au chien, ce qui rend la séance fluide et agréable. Les photos sont très réussies, avec une belle lumière et un vrai sens du détail. On sent qu’il y a du travail derrière ! Très contente du rendu, je recommande sans hésiter.",
+		name: "Marie Mylinh Lavolé",
+		avatar: "/testimonials/marie-mylinh-lavole.jpg"
 	}
 ];
 
@@ -135,24 +148,6 @@ export const portfolioItems = [
 ];
 
 export const portfolioCategories = ["Toutes", "Chiens", "Humains & chiens", "Chiots", "Événements"];
-
-export const testimonials = [
-	{
-		quote: "La séance a été douce, simple et naturelle. Le résultat nous ressemble vraiment.",
-		name: "Séance famille",
-		detail: "Complicité et souvenirs authentiques"
-	},
-	{
-		quote: "Notre chien s’est laissé guider sans stress, et les images sont superbes.",
-		name: "Portrait canin",
-		detail: "Approche rassurante et fluide"
-	},
-	{
-		quote: "Le reportage a parfaitement capté l’ambiance de l’événement et les détails importants.",
-		name: "Événement canin",
-		detail: "Récit visuel et direction artistique"
-	}
-];
 
 export const pricingPlans = [
 	{

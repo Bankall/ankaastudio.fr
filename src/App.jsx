@@ -9,6 +9,7 @@ import { HomePage } from "./pages/HomePage.jsx";
 import { NotFoundPage } from "./pages/NotFoundPage.jsx";
 import { PortfolioPage } from "./pages/PortfolioPage.jsx";
 import { PricingPage } from "./pages/PricingPage.jsx";
+import { CgvPage } from "./pages/CgvPage.jsx";
 
 // Client galleries and the admin area are lazy: neither is ever visited by a
 // marketing-site visitor, and they should not weigh on the landing page bundle.
@@ -79,6 +80,7 @@ function App() {
 						<Route path='/tarifs' element={<PricingPage />} />
 						<Route path='/contact' element={<ContactPage />} />
 						<Route path='/a-propos' element={<AboutPage />} />
+						<Route path='/conditions-generales-vente' element={<CgvPage />} />
 						<Route path='/accueil' element={<Navigate to='/' replace />} />
 						<Route path='*' element={<NotFoundPage />} />
 					</Route>

@@ -267,7 +267,7 @@ export function GalleryPage() {
 	// The selection closes the row, after the sets it is drawn from. A tab of its own
 	// rather than a filter beside the row: it is another way through the same
 	// photographs, and the sets stay in place while it is open.
-	const tabs = useMemo(() => [...sets, { id: FAVOURITES_ID, title: "Mes favoris", favourite: true, count: selection.length }], [selection.length, sets]);
+	const tabs = useMemo(() => [...sets, { id: FAVOURITES_ID, title: "Favoris", favourite: true, count: selection.length }], [selection.length, sets]);
 	const activeTabId = favouritesOnly ? FAVOURITES_ID : activeId;
 	// A lone tab is a label, not a row — a gallery with no photos yet, where favourites
 	// are the only entry — and with no row the grid is nobody's tabpanel.
@@ -518,11 +518,7 @@ export function GalleryPage() {
 				{photos.length === 0 ?
 					// Still the tabs' panel, so that the favourites tab — which anyone can open
 					// before picking anything — is never a tab pointing at nothing.
-					<p
-						className='gallery-view__status gallery-view__status--empty'
-						id={PANEL_ID}
-						role={showTabs ? "tabpanel" : undefined}
-						aria-labelledby={showTabs ? `set-tab-${activeTabId ?? "default"}` : undefined}>
+					<p className='gallery-view__status gallery-view__status--empty' id={PANEL_ID} role={showTabs ? "tabpanel" : undefined} aria-labelledby={showTabs ? `set-tab-${activeTabId ?? "default"}` : undefined}>
 						{favouritesOnly ? "Vous n’avez pas encore de favori. Touchez le cœur d’une photo pour la garder de côté." : "Les photos arrivent bientôt."}
 					</p>
 				:	<div className='photo-grid' id={PANEL_ID} role={showTabs ? "tabpanel" : undefined} aria-labelledby={showTabs ? `set-tab-${activeTabId ?? "default"}` : undefined}>

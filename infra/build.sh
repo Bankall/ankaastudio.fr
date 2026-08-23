@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Bundles the three gallery Lambdas into build/<name>/ ready for
+# Bundles the Lambdas into build/<name>/ ready for
 # `aws cloudformation package`.
 #
 # gallery-api and gallery-zipper bundle to a single file — pure JS, so a small
@@ -69,6 +69,10 @@ build_zipper() {
 	bundle gallery-zipper
 }
 
+build_instagram() {
+	bundle instagram-feed
+}
+
 build_processor() {
 	bundle gallery-processor --external:sharp
 
@@ -94,13 +98,15 @@ case "${1:-all}" in
 	api) build_api ;;
 	zipper) build_zipper ;;
 	processor) build_processor ;;
+	instagram) build_instagram ;;
 	all)
 		build_api
 		build_zipper
 		build_processor
+		build_instagram
 		;;
 	*)
-		echo "Usage: $0 [all|api|processor|zipper]" >&2
+		echo "Usage: $0 [all|api|processor|zipper|instagram]" >&2
 		exit 1
 		;;
 esac

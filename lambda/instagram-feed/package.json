@@ -1,0 +1,11 @@
+{
+	"name": "ankaa-instagram-feed",
+	"private": true,
+	"version": "1.0.0",
+	"type": "module",
+	"description": "Ankaa Studio Instagram mirror — daily pull of the latest posts into S3.",
+	"dependencies": {
+		"@aws-sdk/client-s3": "^3.913.0",
+		"@aws-sdk/client-ssm": "^3.913.0"
+	}
+}

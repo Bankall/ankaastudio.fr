@@ -253,6 +253,17 @@ Resources:
                       Condition:
                           StringEquals:
                               AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
+                    # Public, unlike media/*: the Instagram mirror holds copies of
+                    # already-public posts, so it has its own /instagram/* behaviour
+                    # with no signed cookies. Separate statement, same OAC condition.
+                    - Effect: Allow
+                      Principal:
+                          Service: cloudfront.amazonaws.com
+                      Action: s3:GetObject
+                      Resource: !Sub "arn:aws:s3:::${MediaBucketName}/instagram/*"
+                      Condition:
+                          StringEquals:
+                              AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
 
     # -----------------------------------------------------------------------
     # Lambdas
@@ -364,6 +375,55 @@ Resources:
                       - Effect: Allow
                         Action: s3:PutObjectTagging
                         Resource: !Sub "arn:aws:s3:::${MediaBucketName}/media/g/*"
+
+    # Pulls the studio's latest Instagram posts once a day, mirrors each image
+    # into instagram/ and writes instagram/feed.json. The site reads that static
+    # document, so the browser never touches Meta's API. See lambda/instagram-feed.
+    InstagramFeedFunction:
+        Type: AWS::Serverless::Function
+        Properties:
+            FunctionName: ankaa-instagram-feed
+            CodeUri: ../build/instagram-feed
+            Handler: index.handler
+            Description: Daily Instagram mirror — caches the latest posts into S3 for the home page.
+            # A handful of image downloads plus a token refresh; well under a minute.
+            Timeout: 60
+            MemorySize: 512
+            Environment:
+                Variables:
+                    MEDIA_BUCKET: !Ref MediaBucketName
+                    SSM_PREFIX: /ankaa/instagram
+            Events:
+                Daily:
+                    Type: Schedule
+                    Properties:
+                        Schedule: rate(1 day)
+                        Description: Refresh the cached Instagram feed.
+            Policies:
+                # Scoped to instagram/*: the only prefix this function ever writes.
+                # GetObject also covers the HeadObject existence check that skips
+                # images already mirrored.
+                - Statement:
+                      - Effect: Allow
+                        Action: [s3:PutObject, s3:GetObject]
+                        Resource: !Sub "arn:aws:s3:::${MediaBucketName}/instagram/*"
+                      # ListBucket, bucket-level and unconditioned, purely so a
+                      # HeadObject on a missing key answers 404 instead of 403.
+                      # Without it S3 hides existence with a 403, and a 403 on a
+                      # (bodyless) HEAD is what the SDK surfaces as "UnknownError".
+                      # It only grants key enumeration — object contents stay
+                      # behind the instagram/*-scoped GetObject above.
+                      - Effect: Allow
+                        Action: s3:ListBucket
+                        Resource: !Sub "arn:aws:s3:::${MediaBucketName}"
+                      # Get to read the token + user id, Put to write back the
+                      # 60-day token this function refreshes on every run.
+                      - Effect: Allow
+                        Action: [ssm:GetParameter, ssm:GetParameters, ssm:PutParameter]
+                        Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ankaa/instagram/*"
+                      - Effect: Allow
+                        Action: [kms:Decrypt, kms:Encrypt]
+                        Resource: !Sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm"
 
     # Only CloudFront may invoke the Function URL — there is no public entry point.
     #
@@ -538,6 +598,17 @@ Resources:
                       # stay out of the cache key and one edge copy serves every client.
                       CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
                       TrustedKeyGroups: [!Ref KeyGroupId]
+
+                    # The Instagram mirror: public copies of public posts, so no
+                    # TrustedKeyGroups. CachingOptimized honours the origin
+                    # Cache-Control (1h on feed.json, immutable on the images), so
+                    # a new post appears within a day of the schedule writing it.
+                    - PathPattern: /instagram/*
+                      TargetOriginId: media
+                      ViewerProtocolPolicy: redirect-to-https
+                      AllowedMethods: [GET, HEAD, OPTIONS]
+                      Compress: true
+                      CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
 
     SiteHeadersPolicy:
         Type: AWS::CloudFront::ResponseHeadersPolicy

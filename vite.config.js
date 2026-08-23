@@ -54,7 +54,10 @@ export default defineConfig(({ mode }) => {
 		server: {
 			proxy: {
 				"/api": proxyTo(target),
-				"/media": proxyTo(target)
+				"/media": proxyTo(target),
+				// The Instagram feed is a static document in the media bucket, served
+				// on its own public /instagram/* behaviour; proxy it like the rest.
+				"/instagram": proxyTo(target)
 			}
 		},
 		build: {
