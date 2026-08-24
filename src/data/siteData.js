@@ -62,7 +62,8 @@ export const designCards = [
 
 export const testimonials = [
 	{
-		quote: "J’ai rencontré Sophie par hasard lors d’un événement. J’ai adoré les photos qu’elle a prises à cette occasion et ai alors suivi sa page. Et j’ai tout de suite accroché aux photos partagées : j’avais l’impression d’y être. J’ai donc choisi de lui confier le shooting d’Alaska ainsi que pour nos 10 ans avec mon conjoint. Et le rendu est exceptionnel : je n’ai pas su choisir tellement elles sont magnifiques. Elle ne partage pas seulement une image : une réelle émotion se dégage de ses photos.<br/>Encore merci Sophie, et à très vite pour un nouveau shooting ! 📸",
+		quote: `J’ai rencontré Sophie par hasard lors d’un événement. J’ai adoré les photos qu’elle a prises à cette occasion et ai alors suivi sa page. Et j’ai tout de suite accroché aux photos partagées : j’avais l’impression d’y être. J’ai donc choisi de lui confier le shooting d’Alaska ainsi que pour nos 10 ans avec mon conjoint. Et le rendu est exceptionnel : je n’ai pas su choisir tellement elles sont magnifiques. Elle ne partage pas seulement une image : une réelle émotion se dégage de ses photos.
+		Encore merci Sophie, et à très vite pour un nouveau shooting ! 📸`,
 		name: "Mélody Hunter",
 		avatar: "/testimonials/melody-hunter.jpg"
 	},

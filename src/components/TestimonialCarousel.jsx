@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Swiper, SwiperSlide } from "swiper/react";
 import { A11y, Autoplay } from "swiper/modules";
 import "swiper/css";
@@ -10,6 +10,26 @@ export function TestimonialCarousel({ testimonials }) {
 	// the card buttons rather than the Navigation module (single-pair) arrows.
 	const swiperRef = useRef(null);
 
+	// Autoplay only runs while the carousel is on screen, so it doesn't advance
+	// silently behind the fold and jump when the visitor scrolls back to it.
+	useEffect(() => {
+		const node = swiperRef.current?.el;
+		if (!node) return;
+
+		const observer = new IntersectionObserver(
+			([entry]) => {
+				const autoplay = swiperRef.current?.autoplay;
+				if (!autoplay) return;
+				if (entry.isIntersecting) autoplay.start();
+				else autoplay.stop();
+			},
+			{ threshold: 0.3 }
+		);
+
+		observer.observe(node);
+		return () => observer.disconnect();
+	}, []);
+
 	return (
 		<Swiper
 			className='testimonial-swiper'
@@ -17,7 +37,7 @@ export function TestimonialCarousel({ testimonials }) {
 			loop
 			spaceBetween={24}
 			slidesPerView={1}
-			autoplay={{ delay: 5000, disableOnInteraction: true }}
+			autoplay={{ delay: 4000, disableOnInteraction: true }}
 			onSwiper={swiper => {
 				swiperRef.current = swiper;
 			}}>
