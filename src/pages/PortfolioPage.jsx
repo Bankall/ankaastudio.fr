@@ -1,64 +1,68 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { GalleryModal } from "../components/GalleryModal.jsx";
+// import { useEffect, useMemo, useState } from "react";
+// import { Link } from "react-router-dom";
+// import { GalleryModal } from "../components/GalleryModal.jsx";
 import { Seo } from "../components/Seo.jsx";
 import { SectionHeading } from "../components/SectionHeading.jsx";
-import { portfolioCategories, portfolioItems, siteConfig } from "../data/siteData.js";
+// import { portfolioCategories, portfolioItems, siteConfig } from "../data/siteData.js";
+import logo from "../assets/media/logo-one-line.png";
 
-const portfolioStructuredData = {
-	"@context": "https://schema.org",
-	"@type": "CollectionPage",
-	name: "Portfolio Ankaa Studio",
-	url: `${siteConfig.domain}/portfolio`,
-	description: "Portfolio de photographie canine, humaine et événementielle."
-};
+// const portfolioStructuredData = {
+// 	"@context": "https://schema.org",
+// 	"@type": "CollectionPage",
+// 	name: "Portfolio Ankaa Studio",
+// 	url: `${siteConfig.domain}/portfolio`,
+// 	description: "Portfolio de photographie canine, humaine et événementielle."
+// };
 
 export function PortfolioPage() {
-	const [activeCategory, setActiveCategory] = useState("Toutes");
-	const [selectedItem, setSelectedItem] = useState(null);
+	// const [activeCategory, setActiveCategory] = useState("Toutes");
+	// const [selectedItem, setSelectedItem] = useState(null);
 
-	const filteredItems = useMemo(() => {
-		if (activeCategory === "Toutes") {
-			return portfolioItems;
-		}
+	// const filteredItems = useMemo(() => {
+	// 	if (activeCategory === "Toutes") {
+	// 		return portfolioItems;
+	// 	}
 
-		return portfolioItems.filter(item => item.category === activeCategory);
-	}, [activeCategory]);
+	// 	return portfolioItems.filter(item => item.category === activeCategory);
+	// }, [activeCategory]);
 
-	useEffect(() => {
-		const onKeyDown = event => {
-			if (event.key === "Escape") {
-				setSelectedItem(null);
-			}
-		};
+	// useEffect(() => {
+	// 	const onKeyDown = event => {
+	// 		if (event.key === "Escape") {
+	// 			setSelectedItem(null);
+	// 		}
+	// 	};
 
-		window.addEventListener("keydown", onKeyDown);
+	// 	window.addEventListener("keydown", onKeyDown);
 
-		return () => window.removeEventListener("keydown", onKeyDown);
-	}, []);
+	// 	return () => window.removeEventListener("keydown", onKeyDown);
+	// }, []);
 
 	return (
 		<>
-			<Seo
-				title='Portfolio | Ankaa Studio'
-				description='Découvrez le portfolio d’Ankaa Studio: chiens, humains et chiens, chiots et événements en Marne et à Reims.'
-				path='/portfolio'
-				structuredData={portfolioStructuredData}
-			/>
+			<Seo title='Portfolio | Ankaa Studio' description='Découvrez le portfolio d’Ankaa Studio: chiens, humains et chiens, chiots et événements en Marne et à Reims.' path='/portfolio' noIndex />
 
 			<section className='page-hero'>
 				<div className='container'>
 					<div className='page-hero__panel'>
+						<h1 className='page-hero__title'>
+							<img src={logo} alt='Ankaa Studio' className='page-hero__logo' />
+						</h1>
+						{/* Contenu de la page en cours de préparation.
 						<h1 className='page-hero__title'>Une galerie par univers pour mieux projeter votre séance</h1>
 						<p className='page-hero__description'>
 							Le portfolio est organisé par catégories pour faciliter la lecture des prestations. Chaque image s’ouvre en plein écran pour apprécier les détails et l’atmosphère de la séance.
 						</p>
+						*/}
 					</div>
 				</div>
 			</section>
 
 			<section className='section'>
 				<div className='container page-stack'>
+					<SectionHeading eyebrow='En construction' title='Prochainement disponible' description='Cette page est en cours de préparation. Revenez très bientôt pour la découvrir.' />
+
+					{/* Contenu de la page en cours de préparation.
 					<SectionHeading eyebrow='Galerie' title='Chiens, humains & chiens, chiots et événements' description='Filtrez les images par catégorie et consultez les visuels comme un mini-showroom éditorial.' />
 
 					<div className='gallery-toolbar' aria-label='Filtres de portfolio'>
@@ -99,10 +103,11 @@ export function PortfolioPage() {
 							</Link>
 						</div>
 					</div>
+					*/}
 				</div>
 			</section>
 
-			<GalleryModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+			{/* <GalleryModal item={selectedItem} onClose={() => setSelectedItem(null)} /> */}
 		</>
 	);
 }

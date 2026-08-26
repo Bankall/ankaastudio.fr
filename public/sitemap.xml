@@ -3,6 +3,7 @@
   <url>
     <loc>https://ankaastudio.fr/</loc>
   </url>
+  <!-- Pages en préparation, réactiver les entrées quand le contenu est publié.
   <url>
     <loc>https://ankaastudio.fr/portfolio</loc>
   </url>
@@ -10,10 +11,11 @@
     <loc>https://ankaastudio.fr/tarifs</loc>
   </url>
   <url>
-    <loc>https://ankaastudio.fr/contact</loc>
-  </url>
-  <url>
     <loc>https://ankaastudio.fr/a-propos</loc>
+  </url>
+  -->
+  <url>
+    <loc>https://ankaastudio.fr/contact</loc>
   </url>
   <url>
     <loc>https://ankaastudio.fr/conditions-generales-vente</loc>

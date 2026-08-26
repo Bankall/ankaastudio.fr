@@ -1,16 +1,17 @@
-import { Link } from "react-router-dom";
-import { PricingCard } from "../components/PricingCard.jsx";
+// import { Link } from "react-router-dom";
+// import { PricingCard } from "../components/PricingCard.jsx";
 import { Seo } from "../components/Seo.jsx";
 import { SectionHeading } from "../components/SectionHeading.jsx";
-import { pricingPlans, siteConfig } from "../data/siteData.js";
+// import { pricingPlans, siteConfig } from "../data/siteData.js";
+import logo from "../assets/media/logo-one-line.png";
 
-const pricingStructuredData = {
-	"@context": "https://schema.org",
-	"@type": "Service",
-	name: "Prestations photographiques Ankaa Studio",
-	url: `${siteConfig.domain}/tarifs`,
-	areaServed: ["Reims", "Marne"]
-};
+// const pricingStructuredData = {
+// 	"@context": "https://schema.org",
+// 	"@type": "Service",
+// 	name: "Prestations photographiques Ankaa Studio",
+// 	url: `${siteConfig.domain}/tarifs`,
+// 	areaServed: ["Reims", "Marne"]
+// };
 
 export function PricingPage() {
 	return (
@@ -19,22 +20,30 @@ export function PricingPage() {
 				title='Tarifs | Ankaa Studio'
 				description='Découvrez les tarifs Ankaa Studio: séance chien, humain + chien, chiot, anniversaire canin, reportage événementiel et communication visuelle professionnelle.'
 				path='/tarifs'
-				structuredData={pricingStructuredData}
+				noIndex
 			/>
 
 			<section className='page-hero'>
 				<div className='container'>
 					<div className='page-hero__panel'>
+						<h1 className='page-hero__title'>
+							<img src={logo} alt='Ankaa Studio' className='page-hero__logo' />
+						</h1>
+						{/* Contenu de la page en cours de préparation.
 						<h1 className='page-hero__title'>Des formules claires pour les particuliers et les professionnels</h1>
 						<p className='page-hero__description'>
 							Les prestations sont présentées de façon lisible pour faciliter le choix et permettre une réservation rapide. Chaque formule peut ensuite être ajustée en fonction du projet.
 						</p>
+						*/}
 					</div>
 				</div>
 			</section>
 
 			<section className='section'>
 				<div className='container page-stack'>
+					<SectionHeading eyebrow='En construction' title='Prochainement disponible' description='Cette page est en cours de préparation. Revenez très bientôt pour la découvrir.' />
+
+					{/* Contenu de la page en cours de préparation.
 					<SectionHeading
 						eyebrow='Prestations'
 						title='Séance chien, humain + chien, chiot, événements et communication'
@@ -64,6 +73,7 @@ export function PricingPage() {
 							</Link>
 						</div>
 					</div>
+					*/}
 				</div>
 			</section>
 		</>
