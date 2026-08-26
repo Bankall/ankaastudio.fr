@@ -126,57 +126,59 @@ export function ContactPage() {
 					<SectionHeading eyebrow='Contact et réservation' title='Formulaire de contact, réseaux sociaux et prise de rendez-vous' />
 
 					<div className='contact-layout'>
-						<form className='contact-form card' onSubmit={handleSubmit}>
-							{/* Honeypot field — hidden from users, ignored by real submissions. */}
-							<div aria-hidden='true' style={{ position: "absolute", left: "-9999px", width: "1px", height: "1px", overflow: "hidden" }}>
-								<label htmlFor='website'>Ne pas remplir</label>
-								<input id='website' name='website' type='text' tabIndex={-1} autoComplete='off' value={formState.website} onChange={handleChange} />
-							</div>
-							<div className='form-grid'>
-								<div className='field'>
-									<label htmlFor='name'>Nom</label>
-									<input id='name' name='name' type='text' required value={formState.name} onChange={handleChange} placeholder='Votre nom' />
+						<div>
+							<form className='contact-form card' onSubmit={handleSubmit}>
+								{/* Honeypot field — hidden from users, ignored by real submissions. */}
+								<div aria-hidden='true' style={{ position: "absolute", left: "-9999px", width: "1px", height: "1px", overflow: "hidden" }}>
+									<label htmlFor='website'>Ne pas remplir</label>
+									<input id='website' name='website' type='text' tabIndex={-1} autoComplete='off' value={formState.website} onChange={handleChange} />
+								</div>
+								<div className='form-grid'>
+									<div className='field'>
+										<label htmlFor='name'>Nom</label>
+										<input id='name' name='name' type='text' required value={formState.name} onChange={handleChange} placeholder='Votre nom' />
+									</div>
+
+									<div className='field'>
+										<label htmlFor='email'>Email</label>
+										<input id='email' name='email' type='email' required value={formState.email} onChange={handleChange} placeholder='vous@exemple.fr' />
+									</div>
+
+									<div className='field field--full'>
+										<label htmlFor='service'>Type de prestation</label>
+										<select id='service' name='service' value={formState.service} onChange={handleChange}>
+											{pricingPlans.map(plan => (
+												<option key={plan.slug} value={plan.slug}>
+													{plan.name}
+												</option>
+											))}
+										</select>
+									</div>
+
+									<div className='field field--full'>
+										<label htmlFor='message'>Message</label>
+										<textarea
+											id='message'
+											name='message'
+											required
+											value={formState.message}
+											onChange={handleChange}
+											placeholder='Décrivez votre projet, votre chien, la date souhaitée ou vos besoins professionnels.'
+										/>
+									</div>
 								</div>
 
-								<div className='field'>
-									<label htmlFor='email'>Email</label>
-									<input id='email' name='email' type='email' required value={formState.email} onChange={handleChange} placeholder='vous@exemple.fr' />
+								<div className='form-actions'>
+									<button className='button' type='submit' disabled={status === "sending"}>
+										{status === "sending" ? "Envoi en cours…" : "Envoyer la demande"}
+									</button>
 								</div>
 
-								<div className='field field--full'>
-									<label htmlFor='service'>Type de prestation</label>
-									<select id='service' name='service' value={formState.service} onChange={handleChange}>
-										{pricingPlans.map(plan => (
-											<option key={plan.slug} value={plan.slug}>
-												{plan.name}
-											</option>
-										))}
-									</select>
-								</div>
-
-								<div className='field field--full'>
-									<label htmlFor='message'>Message</label>
-									<textarea
-										id='message'
-										name='message'
-										required
-										value={formState.message}
-										onChange={handleChange}
-										placeholder='Décrivez votre projet, votre chien, la date souhaitée ou vos besoins professionnels.'
-									/>
-								</div>
-							</div>
-
-							<div className='form-actions'>
-								<button className='button' type='submit' disabled={status === "sending"}>
-									{status === "sending" ? "Envoi en cours…" : "Envoyer la demande"}
-								</button>
-							</div>
-
-							{sentMessage ?
-								<div className='form-feedback'>{sentMessage}</div>
-							:	null}
-						</form>
+								{sentMessage ?
+									<div className='form-feedback'>{sentMessage}</div>
+								:	null}
+							</form>
+						</div>
 
 						<div className='page-stack'>
 							<article className='contact-card'>
@@ -205,7 +207,7 @@ export function ContactPage() {
 								</ul>
 							</article>
 
-							<article className='embed-card surface'>
+							<article className='embed-card card'>
 								<div className='contact-card' style={{ boxShadow: "none", border: "0", background: "transparent", padding: "1.2rem 1.2rem 0" }}>
 									<span className='contact-card__eyebrow'>Calendly</span>
 									<h2 className='contact-card__title'>Réservez votre rendez-vous</h2>
