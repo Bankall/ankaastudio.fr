@@ -61,6 +61,10 @@
 	display: grid;
 	gap: 0.9rem;
 	margin-bottom: 2.8rem;
+
+	&.no-description {
+		margin-bottom: 0;
+	}
 }
 
 .section-heading__title,
@@ -79,6 +83,7 @@
 .section-heading__description,
 .hero__description,
 .page-hero__description,
+.about-section__description,
 .lead-text {
 	margin: 0;
 	font-size: 1rem;
@@ -90,7 +95,8 @@
 	text-align: center;
 }
 
-.section-heading__description {
+.section-heading__description,
+.about-section__description {
 	max-width: 70rem;
 	margin: 0 auto;
 }

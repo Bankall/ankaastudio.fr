@@ -110,8 +110,12 @@ button {
 	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
-.grid--2 {
-	grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+.mt-2 {
+	margin-top: 2rem;
+}
+
+.mb-2 {
+	margin-bottom: 2rem;
 }
 
 ::selection {
@@ -186,4 +190,8 @@ button {
 	clip: rect(0, 0, 0, 0);
 	white-space: nowrap;
 	border: 0;
+}
+
+.text-center {
+	text-align: center;
 }
