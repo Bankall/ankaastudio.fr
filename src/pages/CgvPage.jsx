@@ -1,3 +1,4 @@
+import { SectionHeading } from "../components/SectionHeading.jsx";
 import { Seo } from "../components/Seo.jsx";
 import { siteConfig } from "../data/siteData.js";
 
@@ -13,18 +14,14 @@ export function CgvPage() {
 
 			<section className='page-hero'>
 				<div className='container'>
-					<div className='page-hero__panel'>
-						<span className='eyebrow'>Conditions générales de vente</span>
-						<h1 className='page-hero__title'>Conditions générales de vente</h1>
-						<div className='page-hero__intro'>
-							<p className='page-hero__description'>Applicables à toute prestation photographique réalisée par Ankaa Studio. Dernière mise à jour&nbsp;: 23 août 2026.</p>
-						</div>
-					</div>
+					<div className='page-hero__panel'></div>
 				</div>
 			</section>
 
 			<section className='section'>
 				<div className='container'>
+					<SectionHeading level={1} title='Conditions générales de vente' description='Applicables à toute prestation photographique réalisée par Ankaa Studio. Dernière mise à jour&nbsp;: 23 août 2026.' />
+
 					<article className='legal'>
 						<h2>Article 1 — Identification du prestataire</h2>
 						<p>Les présentes conditions générales de vente (ci-après «&nbsp;CGV&nbsp;») sont conclues entre&nbsp;:</p>

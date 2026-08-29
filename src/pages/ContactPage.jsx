@@ -55,7 +55,7 @@ export function ContactPage() {
 		const subject = encodeURIComponent(`Demande de réservation - ${selectedPlan.name}`);
 		const body = encodeURIComponent([`Nom: ${formState.name}`, `Email: ${formState.email}`, `Prestation: ${selectedPlan.name}`, "", formState.message].join("\n"));
 
-		setSentMessage("Votre messagerie s’ouvre pour envoyer la demande.");
+		setSentMessage("Votre messagerie s’ouvre : il ne reste plus qu’à envoyer.");
 		window.location.href = `mailto:${siteConfig.contactEmail}?subject=${subject}&body=${body}`;
 	};
 
@@ -92,11 +92,11 @@ export function ContactPage() {
 			}
 
 			setStatus("sent");
-			setSentMessage("Merci ! Votre demande a bien été envoyée.");
+			setSentMessage("Merci ! J’ai bien reçu votre message, je vous réponds très vite.");
 			setFormState(defaultFormState);
 		} catch {
 			setStatus("error");
-			setSentMessage("L’envoi automatique a échoué. Ouverture de votre messagerie…");
+			setSentMessage("L’envoi n’a pas fonctionné. J’ouvre votre messagerie pour que rien ne soit perdu…");
 			sendViaMailto();
 		}
 	};
@@ -112,18 +112,18 @@ export function ContactPage() {
 
 			<section className='page-hero'>
 				<div className='container'>
-					<div className='page-hero__panel'>
-						<h1 className='page-hero__title'>Un premier échange simple pour cadrer votre séance</h1>
-						<p className='page-hero__description'>
-							Le formulaire permet de préparer la séance, tandis que Calendly facilite la prise de rendez-vous. Vous pouvez aussi écrire directement sur Instagram ou Facebook.
-						</p>
-					</div>
+					<div className='page-hero__panel'></div>
 				</div>
 			</section>
 
 			<section className='section'>
 				<div className='container contact-section'>
-					<SectionHeading eyebrow='Contact et réservation' title='Formulaire de contact, réseaux sociaux et prise de rendez-vous' />
+					<SectionHeading
+						level={1}
+						eyebrow='Contact et réservation'
+						title='Dites-moi tout sur votre projet'
+						description='Une envie de séance, une question, une idée encore un peu floue ? Écrivez-moi quelques mots et construisons ensemble la séance qui vous ressemble, à vous et à votre animal.'
+					/>
 
 					<div className='contact-layout'>
 						<div>
@@ -135,8 +135,8 @@ export function ContactPage() {
 								</div>
 								<div className='form-grid'>
 									<div className='field'>
-										<label htmlFor='name'>Nom</label>
-										<input id='name' name='name' type='text' required value={formState.name} onChange={handleChange} placeholder='Votre nom' />
+										<label htmlFor='name'>Prénom et nom</label>
+										<input id='name' name='name' type='text' required value={formState.name} onChange={handleChange} placeholder='Votre prénom et nom' />
 									</div>
 
 									<div className='field'>
@@ -163,14 +163,14 @@ export function ContactPage() {
 											required
 											value={formState.message}
 											onChange={handleChange}
-											placeholder='Décrivez votre projet, votre chien, la date souhaitée ou vos besoins professionnels.'
+											placeholder='Parlez-moi de votre animal, de ce que vous imaginez et de la période qui vous conviendrait.'
 										/>
 									</div>
 								</div>
 
 								<div className='form-actions'>
 									<button className='button' type='submit' disabled={status === "sending"}>
-										{status === "sending" ? "Envoi en cours…" : "Envoyer la demande"}
+										{status === "sending" ? "Envoi en cours…" : "Envoyer mon message"}
 									</button>
 								</div>
 
@@ -183,7 +183,9 @@ export function ContactPage() {
 						<div className='page-stack'>
 							<article className='contact-card'>
 								<span className='contact-card__eyebrow'>Informations</span>
-								<p className='contact-card__text'>Basée dans la Marne, au service de Reims et des environs pour des séances en lumière naturelle ou en reportage sur mesure.</p>
+								<p className='contact-card__text'>
+									Basée dans la Marne, je me déplace à Reims et aux alentours, pour des séances en extérieur, dans vos lieux de vie ou de balade, au rythme de votre animal.
+								</p>
 								<ul className='contact-card__list'>
 									<li>
 										<a href={`mailto:${siteConfig.contactEmail}`}>{siteConfig.contactEmail}</a>
@@ -195,7 +197,7 @@ export function ContactPage() {
 
 							<article className='contact-card'>
 								<span className='contact-card__eyebrow'>Réseaux sociaux</span>
-								<p className='contact-card__text'>Vous pouvez aussi suivre les coulisses et les disponibilités via les réseaux sociaux du studio.</p>
+								<p className='contact-card__text'>Sur Instagram et Facebook, je partage les coulisses des séances et mes disponibilités du moment. Un message y est tout aussi bienvenu.</p>
 								<ul className='contact-card__list'>
 									{socialLinks.map(social => (
 										<li key={social.label}>
@@ -210,7 +212,7 @@ export function ContactPage() {
 							<article className='embed-card card'>
 								<div className='contact-card' style={{ boxShadow: "none", border: "0", background: "transparent", padding: "1.2rem 1.2rem 0" }}>
 									<span className='contact-card__eyebrow'>Calendly</span>
-									<h2 className='contact-card__title'>Réservez votre rendez-vous</h2>
+									<h2 className='contact-card__title'>Trouvons un créneau ensemble</h2>
 									{/* 
 									<div className='form-actions'>
 										<a className='button-secondary' href={siteConfig.calendlyUrl} target='_blank' rel='noreferrer'>

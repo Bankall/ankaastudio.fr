@@ -4,7 +4,7 @@ export const siteConfig = {
 	city: "Reims",
 	region: "Marne",
 	regionLabel: "Reims et dans la Marne",
-	message: "Des images naturelles et sincères qui racontent votre histoire.",
+	message: "Des photos de votre chien qui lui ressemblent vraiment.",
 	contactEmail: "sophie.marache@gmail.com",
 	heroImage: "https://ankaastudio.fr/hero-background.min.jpg",
 	instagramUrl: "https://www.instagram.com/studio_ankaa",
@@ -222,6 +222,11 @@ export const pricingPlans = [
 		price: "sur devis",
 		priceNote: "",
 		featured: false
+	},
+	{
+		slug: "other-services",
+		label: "Autres services",
+		name: "Autres services"
 	}
 ];
 

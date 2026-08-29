@@ -12,19 +12,13 @@ export function AboutPage() {
 
 			<section className='page-hero'>
 				<div className='container'>
-					<div className='page-hero__panel'>
-						<h1 className='page-hero__title'>Photographe animalière &amp; graphiste dans la Marne</h1>
-						<p className='page-hero__description'>
-							Deux univers réunis par une même passion : les animaux. Des images naturelles et sensibles, qui racontent un regard, une attitude, une complicité… et tous ces petits détails qui rendent votre
-							animal unique.
-						</p>
-					</div>
+					<div className='page-hero__panel'></div>
 				</div>
 			</section>
 
 			<section className='section'>
 				<div className='container about-section'>
-					<SectionHeading eyebrow='Qui suis-je ?' title='Photographe animalière & Graphiste' />
+					<SectionHeading level={1} eyebrow='Qui suis-je ?' title='Photographe animalière & Graphiste' />
 
 					<span className='about-section__description text-center'>
 						<p>Moi, c’est Sophie, photographe et graphiste basée dans la Marne, spécialisée dans l’univers canin.</p>

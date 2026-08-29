@@ -3,7 +3,6 @@
 import { Seo } from "../components/Seo.jsx";
 import { SectionHeading } from "../components/SectionHeading.jsx";
 // import { pricingPlans, siteConfig } from "../data/siteData.js";
-import logo from "../assets/media/logo-one-line.png";
 
 // const pricingStructuredData = {
 // 	"@context": "https://schema.org",
@@ -26,9 +25,6 @@ export function PricingPage() {
 			<section className='page-hero'>
 				<div className='container'>
 					<div className='page-hero__panel'>
-						<h1 className='page-hero__title'>
-							<img src={logo} alt='Ankaa Studio' className='page-hero__logo' />
-						</h1>
 						{/* Contenu de la page en cours de préparation.
 						<h1 className='page-hero__title'>Des formules claires pour les particuliers et les professionnels</h1>
 						<p className='page-hero__description'>
@@ -41,7 +37,7 @@ export function PricingPage() {
 
 			<section className='section'>
 				<div className='container page-stack'>
-					<SectionHeading eyebrow='En construction' title='Prochainement disponible' description='Cette page est en cours de préparation. Revenez très bientôt pour la découvrir.' />
+					<SectionHeading level={1} eyebrow='En construction' title='Prochainement disponible' description='Cette page est en cours de préparation. Revenez très bientôt pour la découvrir.' />
 
 					{/* Contenu de la page en cours de préparation.
 					<SectionHeading

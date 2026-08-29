@@ -137,6 +137,7 @@ button {
 .container {
 	width: min(100%, calc(var(--container) + 2rem));
 	display: flex;
+	flex-direction: column;
 	margin: 0 auto;
 	padding: 0 1rem;
 }

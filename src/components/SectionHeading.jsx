@@ -1,4 +1,8 @@
-export function SectionHeading({ eyebrow, title, description, className = "" }) {
+// Pass level={1} on the heading that acts as the page title, so a page whose hero carries no
+// text still has an h1. Defaults to h2, the right level for a section inside a page.
+export function SectionHeading({ eyebrow, title, description, className = "", level = 2 }) {
+	const Title = `h${level}`;
+
 	// A string description may contain markup (<br/>, <strong>, links…). The copy is authored
 	// in the repo, never user input, so injecting it as HTML is safe here. A description passed
 	// as a React node is rendered as-is.
@@ -10,7 +14,7 @@ export function SectionHeading({ eyebrow, title, description, className = "" }) 
 			{eyebrow ?
 				<span className='eyebrow'>{eyebrow}</span>
 			:	null}
-			<h2 className='section-heading__title'>{title}</h2>
+			<Title className='section-heading__title'>{title}</Title>
 			{description ? descriptionNode : null}
 		</header>
 	);

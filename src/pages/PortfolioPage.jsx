@@ -4,7 +4,6 @@
 import { Seo } from "../components/Seo.jsx";
 import { SectionHeading } from "../components/SectionHeading.jsx";
 // import { portfolioCategories, portfolioItems, siteConfig } from "../data/siteData.js";
-import logo from "../assets/media/logo-one-line.png";
 
 // const portfolioStructuredData = {
 // 	"@context": "https://schema.org",
@@ -45,9 +44,6 @@ export function PortfolioPage() {
 			<section className='page-hero'>
 				<div className='container'>
 					<div className='page-hero__panel'>
-						<h1 className='page-hero__title'>
-							<img src={logo} alt='Ankaa Studio' className='page-hero__logo' />
-						</h1>
 						{/* Contenu de la page en cours de préparation.
 						<h1 className='page-hero__title'>Une galerie par univers pour mieux projeter votre séance</h1>
 						<p className='page-hero__description'>
@@ -60,7 +56,7 @@ export function PortfolioPage() {
 
 			<section className='section'>
 				<div className='container page-stack'>
-					<SectionHeading eyebrow='En construction' title='Prochainement disponible' description='Cette page est en cours de préparation. Revenez très bientôt pour la découvrir.' />
+					<SectionHeading level={1} eyebrow='En construction' title='Prochainement disponible' description='Cette page est en cours de préparation. Revenez très bientôt pour la découvrir.' />
 
 					{/* Contenu de la page en cours de préparation.
 					<SectionHeading eyebrow='Galerie' title='Chiens, humains & chiens, chiots et événements' description='Filtrez les images par catégorie et consultez les visuels comme un mini-showroom éditorial.' />
