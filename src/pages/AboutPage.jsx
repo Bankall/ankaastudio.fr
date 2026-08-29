@@ -4,7 +4,11 @@ import { SectionHeading } from "../components/SectionHeading.jsx";
 export function AboutPage() {
 	return (
 		<>
-			<Seo title='Qui suis-je ? | Ankaa Studio' description='À propos d’Ankaa Studio, photographe canin basée dans la Marne, avec une approche artistique, douce et complice.' path='/a-propos' noIndex />
+			<Seo
+				title='Qui suis-je ? | Ankaa Studio'
+				description='Sophie, photographe animalière et graphiste dans la Marne : l’histoire d’Ankaa Studio, une approche naturelle et sensible, et les animaux qui l’inspirent.'
+				path='/a-propos'
+			/>
 
 			<section className='page-hero'>
 				<div className='container'>
