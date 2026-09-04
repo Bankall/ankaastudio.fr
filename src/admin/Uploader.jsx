@@ -154,7 +154,7 @@ export function Uploader({ gid, sets = [], archived = false, onUploaded }) {
 				<div className='admin-uploader__target'>
 					<label htmlFor='upload-target'>Envoyer dans</label>
 					<select id='upload-target' value={target} disabled={busy} onChange={event => setTarget(event.target.value)}>
-						<option value=''>{DEFAULT_SET_TITLE} (hors ensemble)</option>
+						<option value=''>{DEFAULT_SET_TITLE} (hors catégorie)</option>
 						{sets.map(set => (
 							<option key={set.id} value={set.id}>
 								{set.title}

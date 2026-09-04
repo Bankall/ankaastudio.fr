@@ -431,10 +431,10 @@ async function processPhotos({ request, params }) {
 	const { data: gallery, etag } = await loadGallery(params.gid);
 	// Which tab the batch lands in. Absent or null means the ungrouped remainder,
 	// which is where every upload went before sets existed.
-	const target = str(request.body?.setId, "ensemble", { max: 40 });
+	const target = str(request.body?.setId, "catégorie", { max: 40 });
 
 	if (target && !(gallery.sets ?? []).some(set => set.id === target)) {
-		throw badRequest("Cet ensemble n'existe pas.");
+		throw badRequest("Cette catégorie n'existe pas.");
 	}
 
 	const known = new Set(gallery.photos.map(photo => photo.pid));
@@ -643,16 +643,16 @@ async function patchPhotos({ request, params }) {
 	// gallery's own download settings.
 	if (body.sets !== undefined) {
 		if (typeof body.sets !== "object" || body.sets === null) {
-			throw badRequest("Les ensembles doivent être fournis sous forme d'objet.");
+			throw badRequest("Les catégories doivent être fournies sous forme d'objet.");
 		}
 
 		const known = new Set((gallery.sets ?? []).map(set => set.id));
 
 		for (const [pid, sid] of Object.entries(body.sets)) {
-			const target = str(sid, "ensemble", { max: 40 });
+			const target = str(sid, "catégorie", { max: 40 });
 
 			if (target && !known.has(target)) {
-				throw badRequest("Cet ensemble n'existe pas.");
+				throw badRequest("Cette catégorie n'existe pas.");
 			}
 
 			const photo = gallery.photos.find(candidate => candidate.pid === pid);
@@ -706,7 +706,7 @@ function findSet(gallery, sid) {
 	const set = (gallery.sets ?? []).find(candidate => candidate.id === sid);
 
 	if (!set) {
-		throw notFound("Ensemble introuvable.");
+		throw notFound("Catégorie introuvable.");
 	}
 
 	return set;
@@ -722,12 +722,12 @@ function findSet(gallery, sid) {
 async function createSet({ request, params }) {
 	await requireAdmin(request);
 	const { data: gallery, etag } = await loadGallery(params.gid);
-	const title = str(request.body?.title, "titre de l'ensemble", { max: 120, required: true, allowEmpty: false });
+	const title = str(request.body?.title, "titre de la catégorie", { max: 120, required: true, allowEmpty: false });
 
 	gallery.sets = gallery.sets ?? [];
 
 	if (gallery.sets.length >= MAX_SETS) {
-		throw badRequest(`${MAX_SETS} ensembles maximum par galerie.`);
+		throw badRequest(`${MAX_SETS} catégories maximum par galerie.`);
 	}
 
 	gallery.sets.push(newSet({ id: newSetId(), title, hdEnabled: gallery.hdEnabled }));
@@ -743,9 +743,9 @@ async function updateSet({ request, params }) {
 	const set = findSet(gallery, params.sid);
 
 	const assignments = {
-		title: str(request.body?.title, "titre de l'ensemble", { max: 120, allowEmpty: false }),
-		downloadsEnabled: bool(request.body?.downloadsEnabled, "téléchargements de l'ensemble"),
-		hdEnabled: bool(request.body?.hdEnabled, "haute définition de l'ensemble")
+		title: str(request.body?.title, "titre de la catégorie", { max: 120, allowEmpty: false }),
+		downloadsEnabled: bool(request.body?.downloadsEnabled, "téléchargements de la catégorie"),
+		hdEnabled: bool(request.body?.hdEnabled, "haute définition de la catégorie")
 	};
 
 	for (const [field, value] of Object.entries(assignments)) {
@@ -766,7 +766,7 @@ async function updateSet({ request, params }) {
 async function reorderSets({ request, params }) {
 	await requireAdmin(request);
 	const { data: gallery, etag } = await loadGallery(params.gid);
-	const order = stringArray(request.body?.order, "ordre des ensembles", { max: MAX_SETS });
+	const order = stringArray(request.body?.order, "ordre des catégories", { max: MAX_SETS });
 	const position = new Map((order ?? []).map((sid, index) => [sid, index]));
 
 	// Anything the caller left out keeps its relative place at the end rather than

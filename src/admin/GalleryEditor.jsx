@@ -26,6 +26,22 @@ const STATUS_LABELS = {
 const toDateInput = value => (value ? value.slice(0, 10) : "");
 
 /**
+ * How one selection is told from another.
+ *
+ * The address, because that is what the API files a selection under — case-folded
+ * there, so it is unique. Picks made before selections were attributed have none,
+ * and there can only ever be one such list.
+ */
+const visitorKey = visitor => visitor.email || "anonyme";
+
+/**
+ * Filenames as a photographer's numbering reads them: IMG_9 before IMG_10, which
+ * plain string order gets backwards. Same collation the API uses when it appends a
+ * fresh batch, so sorting here cannot disagree with where an upload landed.
+ */
+const byFilename = (a, b) => String(a.originalName ?? "").localeCompare(String(b.originalName ?? ""), "fr", { numeric: true, sensitivity: "base" });
+
+/**
  * Mirrors the API's own slugify (minus its random fallback) so the field shows
  * what the server is about to store. Accents are folded, everything else that
  * has no place in an URL collapses into single dashes.
@@ -49,6 +65,10 @@ export function GalleryEditor() {
 	const [saving, setSaving] = useState(false);
 	const [password, setPassword] = useState("");
 	const [selection, setSelection] = useState(null);
+	// Which visitor's picks are marked in the grid below, by visitorKey. One at a
+	// time: two selections marked in the same colour would say nothing about whose
+	// photo is whose, which is the only question worth asking of them.
+	const [picked, setPicked] = useState(null);
 	const pollRef = useRef(null);
 	const slugRef = useRef(null);
 
@@ -208,7 +228,7 @@ export function GalleryEditor() {
 	};
 
 	const handleDeleteSet = async set => {
-		if (!window.confirm(`Supprimer l’ensemble « ${set.title} » ? Ses photos restent dans la galerie, sans onglet.`)) {
+		if (!window.confirm(`Supprimer la catégorie « ${set.title} » ? Ses photos restent dans la galerie, sans onglet.`)) {
 			return;
 		}
 
@@ -243,11 +263,48 @@ export function GalleryEditor() {
 		}
 	};
 
-	const loadSelection = async () => {
+	// A toggle rather than a one-way reveal, because the panel now drives the marks in
+	// the grid below: closing it is how the whole gallery comes back into view.
+	const toggleSelection = async () => {
+		if (selection) {
+			setSelection(null);
+			setPicked(null);
+
+			return;
+		}
+
 		try {
 			setSelection(await adminApi.selection(gid));
 		} catch (failure) {
 			setError(failure.message);
+		}
+	};
+
+	/**
+	 * Puts the whole gallery back in filename order.
+	 *
+	 * Uploads run in parallel and a second batch is appended after the first, so the
+	 * grid drifts out of the order the séance was shot in — which the export numbering
+	 * still holds. One flat order covers every tab: the client sees each set sorted by
+	 * the same rule, since a set is only a filter over this array.
+	 */
+	const handleSortByFilename = async () => {
+		const sorted = gallery.photos.slice().sort(byFilename);
+
+		if (sorted.every((photo, index) => photo.pid === gallery.photos[index].pid)) {
+			setNotice("Déjà trié par nom de fichier.");
+			setTimeout(() => setNotice(""), 2000);
+
+			return;
+		}
+
+		if (!window.confirm("Trier toutes les photos par nom de fichier ? L’ordre actuel, s’il a été arrangé à la main, sera remplacé.")) {
+			return;
+		}
+
+		if (await withGallery(() => adminApi.updatePhotos(gid, { order: sorted.map(photo => photo.pid) }))) {
+			setNotice("Trié par nom de fichier.");
+			setTimeout(() => setNotice(""), 2000);
 		}
 	};
 
@@ -276,6 +333,10 @@ export function GalleryEditor() {
 	// Counted by exclusion so a photo left pointing at a deleted set lands here,
 	// which is exactly where the client's manifest puts it.
 	const ungroupedCount = gallery.photos.filter(photo => !sets.some(set => set.id === photo.setId)).length;
+	// Looked up rather than stored alongside the email, so reloading the panel picks up
+	// whatever the visitor has added since — and a list that has gone away stops marking.
+	const pickedVisitor = selection?.visitors.find(visitor => visitorKey(visitor) === picked) ?? null;
+	const pickedPids = new Set((pickedVisitor?.photos ?? []).map(photo => photo.pid));
 
 	return (
 		<section className='admin-section'>
@@ -412,8 +473,8 @@ export function GalleryEditor() {
 					    signs anything under d/ — and the second only covers the photos that
 					    are in no set. Each set has its own pair, in the panel below. */}
 					<p className='admin-hint'>
-						Sans haute définition, le client télécharge l’aperçu web filigrané, photo par photo comme en archive ZIP. Les ensembles peuvent avoir leurs propres réglages, mais couper
-						les téléchargements ici les coupe partout.
+						Sans haute définition, le client télécharge l’aperçu web filigrané, photo par photo comme en archive ZIP. Les catégories peuvent avoir leurs propres réglages, mais
+						couper les téléchargements ici les coupe partout.
 					</p>
 
 					<div className='field'>
@@ -444,7 +505,7 @@ export function GalleryEditor() {
 				</article>
 
 				<article className='admin-panel admin-panel--wide'>
-					<h2 className='admin-panel__title'>Ensembles</h2>
+					<h2 className='admin-panel__title'>Catégories</h2>
 					<SetsPanel
 						sets={sets}
 						counts={setCounts}
@@ -465,8 +526,11 @@ export function GalleryEditor() {
 						<button className='button-secondary' type='button' onClick={reconcile}>
 							Actualiser
 						</button>
-						<button className='button-secondary' type='button' onClick={loadSelection}>
-							Voir les sélections
+						<button className='button-secondary' type='button' onClick={toggleSelection}>
+							{selection ? "Masquer les sélections" : "Voir les sélections"}
+						</button>
+						<button className='button-secondary' type='button' disabled={gallery.photos.length < 2} onClick={handleSortByFilename}>
+							Trier par nom de fichier
 						</button>
 					</div>
 
@@ -476,26 +540,60 @@ export function GalleryEditor() {
 						<div className='admin-selection'>
 							{selection.visitors.length === 0 ?
 								<p className='admin-hint'>Personne n’a encore sélectionné de photo.</p>
-							:	selection.visitors.map(visitor => (
-									<div className='admin-selection__visitor' key={visitor.email || "anonyme"}>
-										<p className='admin-hint'>
-											<strong>{visitor.email || "Sélection sans email"}</strong> — {visitor.photos.length} photo{visitor.photos.length > 1 ? "s" : ""}
-											{visitor.updatedAt ? `, le ${new Date(visitor.updatedAt).toLocaleString("fr-FR")}` : ""} :
-										</p>
-										<ul className='admin-selection__list'>
-											{visitor.photos.map(photo => (
-												<li key={photo.pid}>{photo.originalName || photo.pid}</li>
-											))}
-										</ul>
-									</div>
-								))
+							:	selection.visitors.map(visitor => {
+									const key = visitorKey(visitor);
+									const marking = key === picked;
+
+									return (
+										<div className='admin-selection__visitor' key={key}>
+											<div className='admin-selection__header'>
+												<p className='admin-hint'>
+													<strong>{visitor.email || "Sélection sans email"}</strong> — {visitor.photos.length} photo{visitor.photos.length > 1 ? "s" : ""}
+													{visitor.updatedAt ? `, le ${new Date(visitor.updatedAt).toLocaleString("fr-FR")}` : ""}
+												</p>
+
+												{/* File names alone cannot be recognised — pointing at the
+												    photos themselves is what the photographer is after. */}
+												<button
+													className='button-secondary admin-selection__mark'
+													type='button'
+													aria-pressed={marking}
+													onClick={() => setPicked(marking ? null : key)}>
+													{marking ? "Masquer dans la grille" : "Voir dans la grille"}
+												</button>
+											</div>
+
+											<ul className='admin-selection__list'>
+												{visitor.photos.map(photo => (
+													<li key={photo.pid}>{photo.originalName || photo.pid}</li>
+												))}
+											</ul>
+										</div>
+									);
+								})
 							}
 						</div>
+					:	null}
+
+					{/* Repeated here because the grid is long: whose selection is being read
+					    has to stay legible once the panel above has scrolled away. */}
+					{pickedVisitor ?
+						<p className='admin-selection__legend'>
+							<span className='admin-selection__heart' aria-hidden='true'>
+								♥
+							</span>
+							{pickedVisitor.photos.length} photo{pickedVisitor.photos.length > 1 ? "s" : ""} choisie{pickedVisitor.photos.length > 1 ? "s" : ""} par{" "}
+							<strong>{pickedVisitor.email || "un visiteur sans email"}</strong>
+							<button className='button-secondary admin-selection__mark' type='button' onClick={() => setPicked(null)}>
+								Tout réafficher
+							</button>
+						</p>
 					:	null}
 
 					<AdminPhotoGrid
 						photos={gallery.photos}
 						sets={sets}
+						pickedPids={pickedPids}
 						coverPid={gallery.coverPid}
 						onReorder={order => adminApi.updatePhotos(gid, { order }).then(payload => setGallery(payload.gallery))}
 						onSetCover={pid => patch({ coverPid: pid })}

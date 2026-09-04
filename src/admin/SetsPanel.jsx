@@ -46,8 +46,8 @@ export function SetsPanel({ sets, counts, ungroupedCount, downloadsEnabled, onCr
 	return (
 		<div className='admin-sets'>
 			<p className='admin-hint'>
-				Un ensemble regroupe des photos sous un onglet dans la galerie du client, avec ses propres réglages de téléchargement. Sans ensemble, la galerie reste une
-				seule série et utilise les réglages ci-dessus.
+				Une catégorie regroupe des photos sous un onglet dans la galerie du client, avec ses propres réglages de téléchargement. Sans catégorie, la galerie reste
+				une seule série et utilise les réglages ci-dessus.
 			</p>
 
 			{sets.length > 0 ?
@@ -57,7 +57,7 @@ export function SetsPanel({ sets, counts, ungroupedCount, downloadsEnabled, onCr
 					    are the gallery's own. */}
 					{ungroupedCount > 0 ?
 						<li className='admin-sets__row admin-sets__row--default'>
-							<span className='admin-sets__title'>Galerie (photos hors ensemble)</span>
+							<span className='admin-sets__title'>Galerie (photos hors catégorie)</span>
 							<span className='admin-sets__count'>
 								{ungroupedCount} photo{ungroupedCount > 1 ? "s" : ""}
 							</span>
@@ -72,7 +72,7 @@ export function SetsPanel({ sets, counts, ungroupedCount, downloadsEnabled, onCr
 								type='text'
 								defaultValue={set.title}
 								maxLength={120}
-								aria-label={`Titre de l’ensemble ${set.title}`}
+								aria-label={`Titre de la catégorie ${set.title}`}
 								onBlur={event => event.target.value.trim() && event.target.value !== set.title && onUpdate(set.id, { title: event.target.value })}
 							/>
 
@@ -107,7 +107,7 @@ export function SetsPanel({ sets, counts, ungroupedCount, downloadsEnabled, onCr
 								<button type='button' onClick={() => move(index, 1)} disabled={index === sets.length - 1} title='Descendre'>
 									↓
 								</button>
-								<button type='button' className='admin-photo__delete' onClick={() => onDelete(set)} title='Supprimer l’ensemble'>
+								<button type='button' className='admin-photo__delete' onClick={() => onDelete(set)} title='Supprimer la catégorie'>
 									🗑
 								</button>
 							</span>
@@ -117,14 +117,14 @@ export function SetsPanel({ sets, counts, ungroupedCount, downloadsEnabled, onCr
 			:	null}
 
 			<form className='admin-inline-form' onSubmit={handleCreate}>
-				<input type='text' placeholder='Nom du nouvel ensemble' value={title} maxLength={120} onChange={event => setTitle(event.target.value)} aria-label='Nom du nouvel ensemble' />
+				<input type='text' placeholder='Nom de la nouvelle catégorie' value={title} maxLength={120} onChange={event => setTitle(event.target.value)} aria-label='Nom de la nouvelle catégorie' />
 				<button className='button-secondary' type='submit' disabled={busy || title.trim().length === 0}>
-					Ajouter un ensemble
+					Ajouter une catégorie
 				</button>
 			</form>
 
 			{!downloadsEnabled ?
-				<p className='admin-hint'>Les téléchargements sont coupés pour toute la galerie : aucun ensemble ne peut les rouvrir.</p>
+				<p className='admin-hint'>Les téléchargements sont coupés pour toute la galerie : aucune catégorie ne peut les rouvrir.</p>
 			:	null}
 		</div>
 	);

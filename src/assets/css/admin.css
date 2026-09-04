@@ -385,6 +385,46 @@
 	columns: 2;
 }
 
+.admin-selection__header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.4rem 1rem;
+}
+
+.admin-selection__mark {
+	min-height: 0;
+	padding: 0 0 0.1rem;
+	font-size: 0.82rem;
+}
+
+/* Pressed reads as a state, not as a hover that happens to have stuck. */
+.admin-selection__mark[aria-pressed="true"] {
+	color: var(--favourite);
+	border-bottom-color: var(--favourite);
+}
+
+/* Restates whose selection the grid is marking, close to the grid itself — the
+   panel it was chosen in is long enough to scroll out of sight. */
+.admin-selection__legend {
+	margin: 1rem 0 0;
+	padding: 0.5rem 0.7rem;
+	border-left: 3px solid var(--favourite);
+	background: var(--surface-strong);
+	font-size: 0.85rem;
+	color: var(--muted);
+}
+
+.admin-selection__heart {
+	margin-right: 0.35rem;
+	color: var(--favourite);
+}
+
+.admin-selection__legend .admin-selection__mark {
+	margin-left: 0.6rem;
+}
+
 /* One block per person. Ruled apart rather than merely spaced: two lists of file
    names running together is exactly the confusion the addresses are there to end. */
 .admin-selection__visitor + .admin-selection__visitor {
@@ -615,6 +655,25 @@
 	cursor: default;
 }
 
+/* A picked photo is ringed rather than tinted: the ring holds up against a bright
+   thumbnail, and it does not change what the photo looks like. */
+.admin-photo.is-picked {
+	outline: 3px solid var(--favourite);
+	outline-offset: -3px;
+}
+
+/* While a selection is being read, everything left out of it steps back — hover
+   brings a tile back, so a dimmed photo can still be captioned or moved. */
+.admin-photo-grid.is-picking .admin-photo:not(.is-picked) {
+	opacity: 0.35;
+	transition: opacity 150ms ease-out;
+}
+
+.admin-photo-grid.is-picking .admin-photo:not(.is-picked):hover,
+.admin-photo-grid.is-picking .admin-photo:not(.is-picked):focus-within {
+	opacity: 1;
+}
+
 .admin-photo__image {
 	width: 100%;
 	height: 100%;
@@ -629,15 +688,34 @@
 	color: var(--muted);
 }
 
-.admin-photo__index {
+.admin-photo__flags {
 	position: absolute;
 	top: 0.3rem;
 	left: 0.3rem;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	gap: 0.25rem;
+}
+
+.admin-photo__index {
 	padding: 0.05rem 0.4rem;
 	border-radius: 999px;
 	background: rgba(24, 20, 17, 0.55);
 	color: #fffdf8;
 	font-size: 0.7rem;
+}
+
+.admin-photo__pick {
+	display: grid;
+	place-items: center;
+	width: 1.2rem;
+	height: 1.2rem;
+	border-radius: 999px;
+	background: rgba(24, 20, 17, 0.55);
+	color: var(--favourite);
+	font-size: 0.72rem;
+	line-height: 1;
 }
 
 .admin-photo__cover-flag {

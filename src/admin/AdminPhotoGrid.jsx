@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_SET_TITLE, groupBySet } from "../utils/gallerySets.js";
 
+// Shared so the default prop is one stable identity rather than a new empty Set on
+// every render.
+const NO_PICKS = new Set();
+
 /**
  * The photo manager: reorder by drag, set the cover, edit captions, move a photo
  * between sets, delete.
@@ -13,8 +17,12 @@ import { DEFAULT_SET_TITLE, groupBySet } from "../utils/gallerySets.js";
  * drag that crossed blocks would have to mean both "reorder" and "move to another
  * set" at once. Moving between sets is the select on the tile, which says which set
  * it is going to instead of leaving it to be inferred from where a tile was dropped.
+ *
+ * `pickedPids` marks one visitor's favourites in place. Everything else steps back
+ * rather than disappearing: which photos were *not* chosen is half of what the
+ * photographer is looking at, and hiding them would also hide the tools.
  */
-export function AdminPhotoGrid({ photos, sets, coverPid, onReorder, onSetCover, onDelete, onCaption, onAssign }) {
+export function AdminPhotoGrid({ photos, sets, coverPid, pickedPids = NO_PICKS, onReorder, onSetCover, onDelete, onCaption, onAssign }) {
 	const [order, setOrder] = useState(photos);
 	const [draggedPid, setDraggedPid] = useState(null);
 	const [editing, setEditing] = useState(null);
@@ -92,17 +100,29 @@ export function AdminPhotoGrid({ photos, sets, coverPid, onReorder, onSetCover, 
 		return <p className='admin-empty'>Aucune photo pour l’instant. Envoyez-en ci-dessus.</p>;
 	}
 
+	const picking = pickedPids.size > 0;
+	const gridClass = `admin-photo-grid${picking ? " is-picking" : ""}`;
+
 	const renderTile = (photo, index) => (
 		<li
 			key={photo.pid}
-			className={`admin-photo${draggedPid === photo.pid ? " is-dragging" : ""}${photo.status !== "ready" ? " is-pending" : ""}`}
+			className={`admin-photo${draggedPid === photo.pid ? " is-dragging" : ""}${photo.status !== "ready" ? " is-pending" : ""}${pickedPids.has(photo.pid) ? " is-picked" : ""}`}
 			draggable={photo.status === "ready"}
 			onDragStart={() => handleDragStart(photo.pid)}
 			onDragOver={event => handleDragOver(event, photo.pid)}
 			onDragEnd={handleDrop}
 			onDrop={handleDrop}
 		>
-			<span className='admin-photo__index'>{index + 1}</span>
+			{/* The number and the heart share one row: the index is one to three digits
+			    wide, so a marker placed at a fixed offset would sit on top of it. */}
+			<span className='admin-photo__flags'>
+				<span className='admin-photo__index'>{index + 1}</span>
+				{pickedPids.has(photo.pid) ?
+					<span className='admin-photo__pick' title='Dans la sélection affichée'>
+						♥
+					</span>
+				:	null}
+			</span>
 
 			{photo.thumb ?
 				<img className='admin-photo__image' src={photo.thumb} alt={photo.originalName} loading='lazy' draggable={false} />
@@ -134,7 +154,7 @@ export function AdminPhotoGrid({ photos, sets, coverPid, onReorder, onSetCover, 
 				<select
 					className='admin-photo__set'
 					value={photo.setId ?? ""}
-					aria-label='Ensemble de la photo'
+					aria-label='Catégorie de la photo'
 					onChange={event => onAssign(photo.pid, event.target.value || null)}
 				>
 					<option value=''>{DEFAULT_SET_TITLE}</option>
@@ -173,25 +193,32 @@ export function AdminPhotoGrid({ photos, sets, coverPid, onReorder, onSetCover, 
 	// One block with no heading is the pre-sets layout, and a lone "Galerie" title
 	// above every photo in the gallery would be noise.
 	if (groups.length === 1) {
-		return <ul className='admin-photo-grid'>{groups[0].photos.map(renderTile)}</ul>;
+		return <ul className={gridClass}>{groups[0].photos.map(renderTile)}</ul>;
 	}
 
 	return (
 		<div className='admin-photo-sets'>
-			{groups.map(group => (
-				<section key={group.set?.id ?? "default"} className='admin-photo-set'>
-					<h3 className='admin-photo-set__title'>
-						{group.set?.title ?? DEFAULT_SET_TITLE}
-						<span className='admin-photo-set__count'>
-							{group.photos.length} photo{group.photos.length > 1 ? "s" : ""}
-						</span>
-					</h3>
+			{groups.map(group => {
+				// Which tab a selection came out of is worth a number: it is what says
+				// whether a client picked from everything or only from one series.
+				const pickedHere = group.photos.filter(photo => pickedPids.has(photo.pid)).length;
 
-					{group.photos.length === 0 ?
-						<p className='admin-hint'>Ensemble vide — choisissez-le avant d’envoyer des photos, ou déplacez-y une photo existante.</p>
-					:	<ul className='admin-photo-grid'>{group.photos.map(renderTile)}</ul>}
-				</section>
-			))}
+				return (
+					<section key={group.set?.id ?? "default"} className='admin-photo-set'>
+						<h3 className='admin-photo-set__title'>
+							{group.set?.title ?? DEFAULT_SET_TITLE}
+							<span className='admin-photo-set__count'>
+								{group.photos.length} photo{group.photos.length > 1 ? "s" : ""}
+								{picking ? ` · ${pickedHere} choisie${pickedHere > 1 ? "s" : ""}` : ""}
+							</span>
+						</h3>
+
+						{group.photos.length === 0 ?
+							<p className='admin-hint'>Catégorie vide — choisissez-la avant d’envoyer des photos, ou déplacez-y une photo existante.</p>
+						:	<ul className={gridClass}>{group.photos.map(renderTile)}</ul>}
+					</section>
+				);
+			})}
 		</div>
 	);
 }
