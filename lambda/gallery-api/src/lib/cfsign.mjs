@@ -8,6 +8,10 @@
 // Download blocking falls out of this: the viewing cookie's policy simply does
 // not cover d/*, so there is no client-side route to a full-resolution file.
 //
+// One view crosses that line: the admin galleries list shows a cover out of every
+// gallery at once, which no single Path-scoped cookie can cover, so those v/
+// thumbnails are signed as URLs instead.
+//
 // CloudFront's signature is RSA-SHA1 over the policy document, base64'd with a
 // bespoke URL-safe alphabet. Implemented here rather than pulled in from
 // @aws-sdk/cloudfront-signer to keep the bundle small — it is ~20 lines.

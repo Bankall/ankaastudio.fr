@@ -3,7 +3,8 @@
 import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 
 import { freezeOriginals, originalsState, purgeDerivatives, thawOriginals } from "../lib/archive.mjs";
-import { clearAdminSession, issueAdminSession, issueSignedCookies, penalise, requireAdmin } from "../lib/auth.mjs";
+import { clearAdminSession, issueAdminSession, issueSignedCookies, penalise, requireAdmin, SIGNED_COOKIE_TTL_SECONDS } from "../lib/auth.mjs";
+import { signedUrl } from "../lib/cfsign.mjs";
 import { markDownloadsSeen, readDownloadLog } from "../lib/downloads.mjs";
 import { badRequest, conflict, json, noContent, notFound, publicOrigin } from "../lib/http.mjs";
 import { galleryId, photoId, setId as newSetId, SLUG_PATTERN, slugify } from "../lib/ids.mjs";
@@ -145,14 +146,38 @@ async function session({ request }) {
 
 // --- gallery CRUD ----------------------------------------------------------
 
+/**
+ * The gallery index, each row carrying a signed URL for its cover thumbnail.
+ *
+ * Signed URLs rather than signed cookies, which is what every other view of a
+ * thumbnail uses: a viewing cookie's policy covers exactly one gallery's v/ prefix,
+ * and this page shows a cover from every gallery at once. Minting a cookie set per
+ * row would mean three cookies per gallery in a browser that caps them per domain —
+ * and leaving them out is what had the whole list render broken images until each
+ * gallery had been opened once, which is the only thing that issued its cookie.
+ *
+ * They outlive the page load because the thumbnails are lazy: one loads whenever the
+ * photographer scrolls to it, which can be well after the list arrived.
+ */
 async function listGalleries({ request }) {
 	await requireAdmin(request);
 	const index = (await getJson(INDEX_KEY))?.data ?? emptyIndex();
+	const { cfPrivateKey } = await getSecrets();
+	const origin = publicOrigin(request);
+	const expiresAt = Math.floor(Date.now() / 1000) + SIGNED_COOKIE_TTL_SECONDS;
 
 	return json(200, {
 		galleries: index.galleries.map(row => ({
 			...row,
-			cover: row.coverPid ? `/${thumbKey(row.id, row.coverPid, row.coverRev)}` : null
+			cover:
+				row.coverPid ?
+					signedUrl({
+						url: `${origin}/${thumbKey(row.id, row.coverPid, row.coverRev)}`,
+						expiresAt,
+						keyPairId: process.env.CF_KEY_PAIR_ID,
+						privateKey: cfPrivateKey
+					})
+				:	null
 		}))
 	});
 }
