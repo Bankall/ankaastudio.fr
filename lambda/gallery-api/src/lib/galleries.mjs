@@ -20,6 +20,11 @@ export const webKey = (gid, pid, rev) => `media/g/${gid}/v/w/${pid}_${rev}.webp`
 // The unmarked cover. Derived only for the photo that is currently the cover, so
 // a gallery never holds more than one clean preview of one photo.
 export const coverImageKey = (gid, pid, rev) => `media/g/${gid}/v/c/${pid}_${rev}.webp`;
+// The cover again, for the card a messaging app draws when the gallery link is
+// pasted into a conversation: JPEG rather than WebP, and small, because it is
+// fetched by a crawler that will not wait and may not read WebP. Derived for the
+// current cover only, exactly like the clean copy above.
+export const sharePreviewKey = (gid, pid, rev) => `media/g/${gid}/v/s/${pid}_${rev}.jpg`;
 export const hdKey = (gid, pid, rev) => `media/g/${gid}/d/hd/${pid}_${rev}.jpg`;
 export const zipPrefix = gid => `media/g/${gid}/d/zip/`;
 export const zipKey = (gid, hash, suffix = "") => `media/g/${gid}/d/zip/${hash}${suffix}.zip`;

@@ -12,7 +12,7 @@ import { emailButton, emailLayout, emailNote, emailParagraph, emailQuote, emailV
 import { hashPassword, verifyPassword } from "../lib/passwords.mjs";
 import { invokeProcessor } from "../lib/processor.mjs";
 import { getSecrets } from "../lib/secrets.mjs";
-import { deleteKeys, deletePrefix, getJson, listKeys, mapWithLimit, putJson, s3, updateJson } from "../lib/store.mjs";
+import { deleteKeys, deletePrefix, getJson, listKeys, mapWithLimit, objectExists, putJson, s3, updateJson } from "../lib/store.mjs";
 import { bool, email, isoDate, oneOf, str, stringArray } from "../lib/validate.mjs";
 import {
 	adminProjection,
@@ -33,6 +33,7 @@ import {
 	readyCover,
 	selectionKey,
 	selectionVisitors,
+	sharePreviewKey,
 	sidecarKey,
 	sidecarPrefix,
 	thumbKey,
@@ -106,16 +107,43 @@ async function uniqueSlug(desired, selfId) {
 }
 
 /**
- * The gallery's unmarked cover derivative, if it has a cover to have one for.
+ * The derivatives that exist only for whichever photo is currently the cover: its
+ * unmarked copy, and the JPEG a link preview is drawn from.
  *
- * Resolved through readyCover() so it names the same object the client route
- * derives and serves — including the fallback to the first photo when no cover
+ * Resolved through readyCover() so they name the same objects the client and preview
+ * routes derive and serve — including the fallback to the first photo when no cover
  * was ever chosen.
  */
-function coverImageOf(gallery) {
+function coverDerivatives(gallery) {
 	const cover = readyCover(gallery);
 
-	return cover ? coverImageKey(gallery.id, cover.pid, cover.rev) : null;
+	return cover ? [coverImageKey(gallery.id, cover.pid, cover.rev), sharePreviewKey(gallery.id, cover.pid, cover.rev)] : [];
+}
+
+/**
+ * Derives the link preview's JPEG if the current cover has none.
+ *
+ * Called when the editor opens rather than when the gallery is shared: the link
+ * usually leaves through the copy button, which never reaches the API at all, and
+ * the first crawler to arrive before this JPEG exists settles for the watermarked
+ * preview. Purely opportunistic, so it must never be why a gallery fails to load.
+ */
+async function warmSharePreview(gallery) {
+	const cover = readyCover(gallery);
+
+	if (!cover) {
+		return;
+	}
+
+	try {
+		if (await objectExists(sharePreviewKey(gallery.id, cover.pid, cover.rev))) {
+			return;
+		}
+
+		await invokeProcessor({ gid: gallery.id, pid: cover.pid, extension: cover.extension, rev: cover.rev, variant: "share" });
+	} catch (error) {
+		console.warn("Share preview not queued", { gid: gallery.id, error: error.message });
+	}
 }
 
 // --- authentication --------------------------------------------------------
@@ -205,6 +233,10 @@ async function readGallery({ request, params }) {
 	const { data } = await loadGallery(params.gid);
 	const origin = publicOrigin(request);
 
+	// Opening the editor is the last thing that reliably happens before a link is
+	// shared, so it is where the card's image gets built.
+	await warmSharePreview(data);
+
 	// The admin grid renders the same previews from the same protected v/ prefix
 	// the client sees, so it needs the same signed cookies — an admin session is
 	// not one. Without this every tile 403s, except in the one case that hides
@@ -262,18 +294,19 @@ async function updateGallery({ request, params }) {
 			throw badRequest("La photo de couverture n'appartient pas à cette galerie.");
 		}
 
-		// The outgoing cover's unmarked copy has no reason to exist any more, and
-		// leaving it behind would slowly turn "one clean preview per gallery" into
-		// one per photo that was ever the cover. The new cover's is derived lazily,
-		// on the first client read.
-		const outgoing = coverImageOf(gallery);
+		// The outgoing cover's own derivatives have no reason to exist any more, and
+		// leaving them behind would slowly turn "one clean preview per gallery" into
+		// one per photo that was ever the cover. The new cover's are derived lazily —
+		// on the first client read, and on the next open of this editor.
+		const outgoing = coverDerivatives(gallery);
 
 		gallery.coverPid = body.coverPid;
 
-		const incoming = coverImageOf(gallery);
+		const incoming = new Set(coverDerivatives(gallery));
+		const stale = outgoing.filter(key => !incoming.has(key));
 
-		if (outgoing && outgoing !== incoming) {
-			await deleteKeys([outgoing]);
+		if (stale.length > 0) {
+			await deleteKeys(stale);
 		}
 	}
 
@@ -705,9 +738,10 @@ async function deletePhoto({ request, params }) {
 	await deleteKeys([
 		thumbKey(gallery.id, photo.pid, photo.rev),
 		webKey(gallery.id, photo.pid, photo.rev),
-		// Only exists if this photo was the cover, and deleting a key that is not
-		// there costs nothing.
+		// These two only exist if this photo was the cover, and deleting a key that is
+		// not there costs nothing.
 		coverImageKey(gallery.id, photo.pid, photo.rev),
+		sharePreviewKey(gallery.id, photo.pid, photo.rev),
 		hdKey(gallery.id, photo.pid, photo.rev),
 		originalKey(gallery.id, photo.pid, photo.extension),
 		sidecarKey(gallery.id, photo.pid)
@@ -868,9 +902,11 @@ async function reprocess({ request, params }) {
 		stale.push(
 			thumbKey(gallery.id, photo.pid, photo.rev),
 			webKey(gallery.id, photo.pid, photo.rev),
-			// The cover's clean copy is rev-suffixed like everything else, so the new
-			// rev needs a new one; the client read that follows queues it.
+			// The cover's clean copy and its preview JPEG are rev-suffixed like
+			// everything else, so the new rev needs new ones; the client read and the
+			// next editor open that follow queue them.
 			coverImageKey(gallery.id, photo.pid, photo.rev),
+			sharePreviewKey(gallery.id, photo.pid, photo.rev),
 			hdKey(gallery.id, photo.pid, photo.rev)
 		);
 		photo.rev += 1;

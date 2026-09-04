@@ -13,6 +13,9 @@
 //
 // A `variant: "cover"` invocation instead writes only:
 //   media/g/<gid>/v/c/<pid>_<rev>.webp   2048px  unmarked, for the gallery cover
+//
+// And a `variant: "share"` invocation only:
+//   media/g/<gid>/v/s/<pid>_<rev>.jpg    1200px  unmarked, for link previews
 
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import exifReader from "exif-reader";
@@ -25,6 +28,9 @@ const WATERMARK_KEY = "assets/watermark.png";
 const THUMB_WIDTH = 600;
 const WEB_WIDTH = 2048;
 const HD_MAX_EDGE = 6000;
+// Wide enough for the large card every messaging app draws (they ask for 1200),
+// and small enough that a crawler on a timeout still gets the whole file.
+const SHARE_WIDTH = 1200;
 
 // The mark spans nearly the whole frame — it is a download deterrent, not a
 // signature — but stops short of the edges, because the PNG carries no safe zone
@@ -279,6 +285,24 @@ export const handler = async event => {
 			return { ok: true, pid, rev, variant };
 		}
 
+		// The image a link preview shows. Unmarked for the same reason the cover is —
+		// it is the whole card, and a mark across it is what the photographer was
+		// complaining about — and JPEG because the crawlers that draw those cards are
+		// the last software on earth that cannot be relied on to read WebP.
+		if (variant === "share") {
+			const preview = await base
+				.clone()
+				.resize({ width: SHARE_WIDTH, fit: "inside", withoutEnlargement: true })
+				.jpeg({ quality: 82, mozjpeg: true })
+				.toBuffer();
+
+			await putDerivative(`media/g/${gid}/v/s/${pid}_${rev}.jpg`, preview, "image/jpeg");
+
+			console.info("Derived share preview", { gid, pid, rev, bytes: preview.length });
+
+			return { ok: true, pid, rev, variant };
+		}
+
 		const markPreviews = watermark === "preview" || watermark === "all";
 		const markHd = watermark === "all";
 
@@ -359,10 +383,10 @@ export const handler = async event => {
 	} catch (error) {
 		console.error("Processing failed", { gid, pid, rev, variant, error: error.message });
 
-		// A cover job derives nothing the gallery depends on — the photo is already
-		// processed — so a failure there must not overwrite a healthy sidecar with a
-		// failed one. The client falls back to the marked preview instead.
-		if (variant === "cover") {
+		// A cover or share job derives nothing the gallery depends on — the photo is
+		// already processed — so a failure there must not overwrite a healthy sidecar
+		// with a failed one. Both callers fall back to the marked preview instead.
+		if (variant !== "full") {
 			throw error;
 		}
 

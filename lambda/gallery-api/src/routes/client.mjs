@@ -44,11 +44,12 @@ const MAX_ZIP_PHOTOS = 2000;
 
 // db/index.json is read on every anonymous gallery hit. A few seconds of memory
 // caching turns a burst of page loads into one S3 GET without making slug edits
-// feel broken.
+// feel broken. Shared with the share-preview routes, which resolve a slug for the
+// same reason and would otherwise keep a second cache of the same document.
 const INDEX_CACHE_MS = 5000;
 let indexCache = null;
 
-async function readIndex() {
+export async function readIndex() {
 	if (indexCache && Date.now() - indexCache.at < INDEX_CACHE_MS) {
 		return indexCache.data;
 	}

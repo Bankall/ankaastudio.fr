@@ -40,10 +40,12 @@ echo "→ Uploading entry files (revalidate) ..."
 	--cache-control "public,max-age=86400" --content-type "application/xml"
 
 # Only the entry points — a wildcard would needlessly evict every cached photo.
+# /gallery/* is one of them: those pages are index.html rendered by the API, so they
+# hold the asset names that were just replaced.
 echo "→ Invalidating entry points ..."
 "${AWS[@]}" cloudfront create-invalidation \
 	--distribution-id "$DIST_ID" \
-	--paths /index.html /404.html /robots.txt /sitemap.xml \
+	--paths /index.html /404.html /robots.txt /sitemap.xml '/gallery/*' \
 	--query 'Invalidation.Id' --output text
 
 echo "✓ Published to $BUCKET"

@@ -14,11 +14,12 @@ CloudFront + S3 + three Lambdas, with JSON files in S3 as the database.
 One CloudFront distribution serves three origins on the same domain, which is
 what makes the whole thing work without CORS and with same-origin cookies:
 
-| Path       | Origin                    | Access                                    |
-| ---------- | ------------------------- | ----------------------------------------- |
-| `/*`       | site bucket (OAC)         | public — the marketing site               |
-| `/api/*`   | Lambda Function URL (OAC) | public route, own auth                    |
-| `/media/*` | media bucket (OAC)        | signed cookies (previews) / signed URLs (downloads) |
+| Path         | Origin                    | Access                                    |
+| ------------ | ------------------------- | ----------------------------------------- |
+| `/*`         | site bucket (OAC)         | public — the marketing site               |
+| `/api/*`     | Lambda Function URL (OAC) | public route, own auth                    |
+| `/gallery/*` | Lambda Function URL (OAC) | public — the SPA shell, per-gallery link preview tags injected |
+| `/media/*`   | media bucket (OAC)        | signed cookies (previews) / signed URLs (downloads) |
 
 The media bucket's policy only grants CloudFront `media/*`. `db/` (the JSON
 database) and `originals/` are unreachable from the internet by construction, not
@@ -29,9 +30,11 @@ by configuration — there is no signature that can reach them.
 - `media/g/<gid>/v/*` — watermarked previews. Covered by **signed cookies**
   scoped to `Path=/media/g/<gid>/v/`, so several gallery sessions coexist in one
   browser despite CloudFront's fixed cookie names. 12 h, renewed by the client.
-  The one exception is `v/c/` — the gallery's opening image, unmarked. It is
-  derived for the cover photo only, so a gallery never exposes more than one clean
-  preview, and the API deletes it as soon as another photo becomes the cover.
+  Two prefixes under it hold unmarked copies, both of the cover photo only, so a
+  gallery never exposes more than one clean preview of one photo, and the API
+  deletes both as soon as another photo becomes the cover: `v/c/` is the gallery's
+  opening image, `v/s/` the JPEG a messaging app draws when the link is pasted
+  into a conversation (see [Link previews](#link-previews)).
 - `media/g/<gid>/d/*` — HD files and ZIPs. **Never** covered by a cookie; each
   download gets its own 5-minute signed URL from the API.
 
@@ -63,7 +66,7 @@ Two consequences, both non-obvious and both already handled in this repo:
 
 | Function            | Trigger                     | Job                                                            |
 | ------------------- | --------------------------- | -------------------------------------------------------------- |
-| `ankaa-gallery-api` | CloudFront `/api/*`         | auth, gallery CRUD, presigned uploads, signing, SES sharing     |
+| `ankaa-gallery-api` | CloudFront `/api/*`, `/gallery/*` | auth, gallery CRUD, presigned uploads, signing, SES sharing, the gallery page |
 | `ankaa-gallery-processor` | async invoke from the API | sharp: watermarked previews, HD JPEG, LQIP, per-photo sidecar |
 | `ankaa-gallery-zipper`    | async invoke from the API | streams a store-mode ZIP into S3 multipart                    |
 
@@ -90,6 +93,41 @@ polls `GET /api/archives/<jid>`, which sits outside the password gate — the ma
 opened on devices that never saw the gallery, so the 95-bit job id is the
 credential. It still honours the gallery's own switches, so turning downloads off
 retracts every link ever sent, and the job document expires after 7 days.
+
+### Link previews
+
+A gallery link is pasted into an RCS thread, a WhatsApp message, an Instagram DM.
+Each of those fetches the page and reads its `<head>` to draw a card, and none of
+them runs JavaScript — so the client-side `<Seo>` component is invisible to them
+and every gallery used to unfurl as the same studio-wide sentence with no image.
+
+Which is why `/gallery/*` is a CloudFront behaviour of its own, pointed at the API:
+`lambda/gallery-api/src/routes/preview.mjs` reads the deployed `index.html`, strips
+the studio's static card out of its head and writes that gallery's in — title,
+photo count, shoot date, whether there is a password. Everything else about the
+document is untouched, so the app boots exactly as before, and the response is
+edge-cacheable by URL (5 min), which keeps the Lambda off the page-load path.
+
+Three things worth knowing:
+
+- **The card's image is a redirect.** `og:image` points at
+  `/api/g/<slug>/preview`, which 302s to a freshly signed URL of `v/s/`. A crawler
+  holds no signed cookies, and a signature written into the tag itself would be
+  dead the day the message is forwarded; signing per fetch means the URL in the
+  message never expires. If the JPEG has not been derived yet the redirect falls
+  back to the watermarked `v/w/` preview, so there is always an image.
+- **That image is public to anyone holding the link** — including for a
+  password-protected gallery, whose gate the card therefore shows one photo past.
+  That is the trade: a card with no photo is the thing being fixed here.
+- **No `noindex` in the served head, deliberately.** Several of these crawlers
+  refuse a page that carries one, and a gallery whose link cannot be previewed is
+  the whole problem. `<Seo>` still sets it client-side, which is what Googlebot
+  reads, and `robots.txt` must *not* grow a `Disallow: /gallery/` — the honest
+  crawlers among them would then stop fetching and the cards would go back to
+  being blank.
+
+The API also derives that JPEG when the editor is opened, because a link usually
+leaves through the copy button, which never reaches the API at all.
 
 ---
 
@@ -215,9 +253,10 @@ aws iam put-user-policy --user-name ankaa-github-deploy \
 The bucket name, distribution id and account id are hardcoded in it, so it is
 specific to this account rather than a reusable template.
 
-Note the invalidation is scoped to the four entry documents. A `/*` invalidation
-would also evict every cached photo — a needless bill and a slow gallery for the
-next visitor.
+Note the invalidation is scoped to the entry documents, `/gallery/*` among them:
+those pages are `index.html` rendered by the API, so they carry the hashed asset
+names the deploy just replaced. A `/*` invalidation would also evict every cached
+photo — a needless bill and a slow gallery for the next visitor.
 
 ---
 

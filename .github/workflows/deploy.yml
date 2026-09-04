@@ -81,9 +81,13 @@ jobs:
             # Scoped to the entry documents. A wildcard invalidation would also evict
             # every cached photo — a needless bill and a slow gallery afterwards.
             # Hashed asset filenames never need invalidating.
+            #
+            # /gallery/* counts as an entry document: the API serves those pages by
+            # injecting a gallery's link-preview tags into the index.html just
+            # uploaded, so they carry the asset names that changed with it.
             - name: Invalidate CloudFront entry documents
               if: ${{ env.CLOUDFRONT_DISTRIBUTION_ID != '' }}
               run: |
                   aws cloudfront create-invalidation \
                     --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
-                    --paths "/index.html" "/404.html" "/robots.txt" "/sitemap.xml"
+                    --paths "/index.html" "/404.html" "/robots.txt" "/sitemap.xml" "/gallery/*"

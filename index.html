@@ -12,6 +12,23 @@
 
 		<title>Ankaa Studio | Photographe canin à Reims et dans la Marne</title>
 
+		<!--
+			The card a link to this site draws in a message or a post. Static, so it is
+			the studio's own: nothing here runs before a crawler has read the head, and
+			only the gallery pages are rewritten with something better — the API serves
+			those, see lambda/gallery-api/src/routes/preview.mjs. No og:url on purpose:
+			without one, every reader falls back to the address it actually fetched.
+		-->
+		<meta property="og:type" content="website" />
+		<meta property="og:site_name" content="Ankaa Studio" />
+		<meta property="og:locale" content="fr_FR" />
+		<meta property="og:title" content="Ankaa Studio | Photographe canin à Reims et dans la Marne" />
+		<meta property="og:description" content="Photographe canin à Reims et dans la Marne. Séances chiens, familles avec chien, chiots, événements et communication visuelle professionnelle." />
+		<meta property="og:image" content="https://ankaastudio.fr/hero-background.min.jpg" />
+		<meta property="og:image:secure_url" content="https://ankaastudio.fr/hero-background.min.jpg" />
+		<meta property="og:image:alt" content="Portrait canin par Ankaa Studio" />
+		<meta name="twitter:card" content="summary_large_image" />
+
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,200..900;1,200..900&family=Fredoka:wght@300..700&display=swap" rel="stylesheet" />

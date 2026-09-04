@@ -93,6 +93,27 @@ export function json(status, body, { cookies } = {}) {
 	};
 }
 
+/**
+ * An HTML document. One route answers with one: the gallery shell, in preview.mjs.
+ *
+ * Cacheable, unlike everything else here. The shell is identical for every visitor
+ * to a gallery, and letting CloudFront hold it is what keeps this Lambda off the
+ * page-load path. `max-age=0` still sends browsers back to the edge, so a redeploy
+ * — which changes the hashed asset names inside the document — reaches them as soon
+ * as the invalidation lands.
+ */
+export function html(status, body, { sMaxAge = 0 } = {}) {
+	return {
+		statusCode: status,
+		headers: {
+			"content-type": "text/html; charset=utf-8",
+			"cache-control": sMaxAge > 0 ? `public, max-age=0, s-maxage=${sMaxAge}, must-revalidate` : "no-store, private",
+			"x-content-type-options": "nosniff"
+		},
+		body
+	};
+}
+
 export function noContent({ cookies } = {}) {
 	return {
 		statusCode: 204,

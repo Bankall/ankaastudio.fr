@@ -280,6 +280,9 @@ Resources:
             Environment:
                 Variables:
                     MEDIA_BUCKET: !Ref MediaBucketName
+                    # Read, not written: the gallery page is this bucket's index.html
+                    # with per-gallery preview tags injected into its head.
+                    SITE_BUCKET: !Ref SiteBucketName
                     SSM_PREFIX: !Ref SsmPrefix
                     CF_KEY_PAIR_ID: !Ref CloudFrontKeyPairId
                     ZIPPER_FUNCTION: !Ref GalleryZipperFunction
@@ -293,6 +296,11 @@ Resources:
                 - S3CrudPolicy:
                       BucketName: !Ref MediaBucketName
                 - Statement:
+                      # The one object of the site bucket this function ever touches:
+                      # the SPA shell it rewrites for /gallery/*.
+                      - Effect: Allow
+                        Action: s3:GetObject
+                        Resource: !Sub "arn:aws:s3:::${SiteBucketName}/index.html"
                       - Effect: Allow
                         Action: [ssm:GetParameter, ssm:GetParameters, ssm:GetParametersByPath]
                         Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPrefix}/*"
@@ -489,7 +497,7 @@ Resources:
             Name: !Sub "${AWS::StackName}-edge-router"
             AutoPublish: true
             FunctionConfig:
-                Comment: Preserves the viewer host for /api/* and rewrites SPA routes to /index.html.
+                Comment: Preserves the viewer host for /api/* and /gallery/*, and rewrites SPA routes to /index.html.
                 Runtime: cloudfront-js-2.0
             FunctionCode: |
                 function handler(event) {
@@ -499,7 +507,12 @@ Resources:
                 	// The API needs to know which public origin it is answering on so it
                 	// can scope cookies correctly. AllViewerExceptHostHeader forwards any
                 	// header we add here, so smuggle the real host through.
-                	if (uri.startsWith('/api/')) {
+                	//
+                	// /gallery/* is served by the API too — it is the SPA shell with that
+                	// gallery's link-preview tags written into it — so it needs the same
+                	// header, and must not be folded onto /index.html the way every other
+                	// client-side route below is.
+                	if (uri.startsWith('/api/') || uri.startsWith('/gallery/')) {
                 		if (request.headers.host) {
                 			request.headers['x-ankaa-host'] = { value: request.headers.host.value };
                 		}
@@ -585,6 +598,30 @@ Resources:
                       # …but every cookie, query string and header must still reach the
                       # Lambda. Host is the one exception a Function URL cannot accept.
                       OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+                      FunctionAssociations:
+                          - EventType: viewer-request
+                            FunctionARN: !GetAtt EdgeRouterFunction.FunctionMetadata.FunctionARN
+
+                    # The gallery page, served by the API rather than from the bucket
+                    # so that a shared link unfurls as the gallery it points at: the
+                    # response is index.html with that gallery's Open Graph tags in
+                    # its head. CachingOptimized keys the cache on the URI alone, so
+                    # one render answers every visitor — and every crawler — for as
+                    # long as the s-maxage the Lambda sets. A deploy changes the hashed
+                    # asset names inside those documents, so infra/sync-site.sh
+                    # invalidates /gallery/* along with the other entry points.
+                    - PathPattern: /gallery/*
+                      TargetOriginId: api
+                      ViewerProtocolPolicy: redirect-to-https
+                      AllowedMethods: [GET, HEAD, OPTIONS]
+                      Compress: true
+                      CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+                      # Only for x-ankaa-host, which is what lets the page print its own
+                      # absolute URLs. Nothing it forwards is part of the cache key, and
+                      # the route reads no cookies — a card that varied per visitor could
+                      # not be cached under the URL alone.
+                      OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+                      ResponseHeadersPolicyId: !Ref SiteHeadersPolicy
                       FunctionAssociations:
                           - EventType: viewer-request
                             FunctionARN: !GetAtt EdgeRouterFunction.FunctionMetadata.FunctionARN
