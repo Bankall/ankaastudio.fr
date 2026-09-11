@@ -620,7 +620,7 @@
 .lightbox__close {
 	font-size: 1.3rem;
 	line-height: 1;
-	padding: 0.25rem 0.7rem;
+	padding: 0.25rem 0.7rem 0.45rem;
 }
 
 .lightbox__stage {
