@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { adminApi } from "../utils/galleryApi.js";
+import { WATERMARK_LABELS, tabOf, watermarkFor } from "../utils/gallerySets.js";
 import { AdminPhotoGrid } from "./AdminPhotoGrid.jsx";
 import { SetsPanel } from "./SetsPanel.jsx";
 import { SharePanel } from "./SharePanel.jsx";
@@ -9,12 +10,6 @@ import { Uploader } from "./Uploader.jsx";
 // While derivatives are still being produced, poll the record so tiles appear as
 // they become ready. Stops as soon as nothing is pending.
 const POLL_INTERVAL_MS = 4000;
-
-const WATERMARK_LABELS = {
-	preview: "Aperçus uniquement (recommandé)",
-	all: "Aperçus et fichiers HD",
-	none: "Aucun filigrane"
-};
 
 const STATUS_LABELS = {
 	draft: "Brouillon — invisible pour le client",
@@ -227,12 +222,38 @@ export function GalleryEditor() {
 		}
 	};
 
+	/**
+	 * The answer to a move — one photo into another tab, or a whole set's worth back into
+	 * the remainder.
+	 *
+	 * The tab a photo lands in can ask for a different watermark than the one burnt into
+	 * it, and the API re-derives it on the spot rather than leaving the odd one out in the
+	 * tab. Said out loud because the tiles drop back to "traitement" for a moment, which
+	 * otherwise reads as the move having gone wrong.
+	 */
+	const applyMove = payload => {
+		setGallery(payload.gallery);
+
+		if (payload.requeued > 0) {
+			setNotice(`Filigrane du nouvel onglet appliqué : ${payload.requeued} aperçu(s) en cours de régénération.`);
+			setTimeout(() => setNotice(""), 3000);
+		}
+	};
+
 	const handleDeleteSet = async set => {
-		if (!window.confirm(`Supprimer la catégorie « ${set.title} » ? Ses photos restent dans la galerie, sans onglet.`)) {
+		if (!window.confirm(`Supprimer la catégorie « ${set.title} » ? Ses photos restent dans la galerie, sans onglet, et prennent les réglages des photos hors catégorie.`)) {
 			return;
 		}
 
-		await withGallery(() => adminApi.deleteSet(gid, set.id));
+		setError("");
+
+		// Its photos land in the remainder, which may ask for a different watermark than
+		// the set did — a move like the grid's, announced the same way.
+		try {
+			applyMove(await adminApi.deleteSet(gid, set.id));
+		} catch (failure) {
+			setError(failure.message);
+		}
 	};
 
 	// Archiving deletes every derivative, so it must not happen on a mis-click in a
@@ -249,18 +270,102 @@ export function GalleryEditor() {
 		await patch({ status });
 	};
 
+	// Scope-free means the whole gallery; `{ setId }` narrows it to one tab, null setId
+	// being the photos in no category.
+	const runReprocess = async scope => {
+		try {
+			const { queued } = await adminApi.reprocess(gid, scope);
+			setNotice(`Régénération lancée : ${queued} photo(s).`);
+			await reconcile();
+		} catch (failure) {
+			setError(failure.message);
+		}
+	};
+
 	const handleReprocess = async () => {
 		if (!window.confirm("Régénérer tous les aperçus avec les réglages actuels de filigrane ? Les archives ZIP en cache seront supprimées.")) {
 			return;
 		}
 
+		await runReprocess();
+	};
+
+	/**
+	 * One tab's photos, re-derived with the watermark that tab now asks for.
+	 *
+	 * Confirmed like the gallery-wide button because it is the same operation at a
+	 * smaller scope — every photo gets a new rev, and the cached ZIPs go either way.
+	 */
+	const handleRegenerateSet = async (setId, label, count) => {
+		if (!window.confirm(`Régénérer les ${count} aperçu(s) de ${label} avec le filigrane réglé pour cet onglet ? Les archives ZIP en cache seront supprimées.`)) {
+			return;
+		}
+
+		await runReprocess({ setId });
+	};
+
+	/**
+	 * A tab's watermark: saved, then offered to the photos already in it.
+	 *
+	 * The mark is burnt into the derivatives, so the setting alone only decides how the
+	 * next upload is derived — and a select that says "Aucun filigrane" over a grid of
+	 * marked thumbnails is simply wrong. Asked here rather than left to ⟳, because this
+	 * is the moment the answer is known.
+	 *
+	 * Declining keeps the setting: it applies from the next upload, and ⟳ catches up
+	 * whenever. Saved before regenerating either way, since the processor reads the mode
+	 * off the record.
+	 */
+	const handleWatermark = async (setId, mode, label, count) => {
+		const saved = setId ? await withGallery(() => adminApi.updateSet(gid, setId, { watermark: mode })) : await patch({ ungrouped: { watermark: mode } });
+
+		if (!saved || count === 0) {
+			return;
+		}
+
+		if (!window.confirm(`Appliquer ce filigrane aux ${count} photo(s) de ${label} déjà en ligne ?\n\nLes archives ZIP en cache seront supprimées. Sinon le réglage ne vaudra que pour les prochains envois, et ⟳ l’appliquera plus tard.`)) {
+			return;
+		}
+
+		await runReprocess({ setId });
+	};
+
+	const handleAssign = async (pid, sid) => {
+		setError("");
+
 		try {
-			await adminApi.reprocess(gid);
-			setNotice("Régénération lancée.");
-			await reconcile();
+			applyMove(await adminApi.updatePhotos(gid, { sets: { [pid]: sid } }));
 		} catch (failure) {
 			setError(failure.message);
 		}
+	};
+
+	/**
+	 * The gallery's default watermark, offered to the photos it governs.
+	 *
+	 * Counted over the tabs with no mode of their own, since those are the ones this
+	 * select reaches — but regenerated gallery-wide, there being no scope in between: a
+	 * tab that overrides the default is re-derived with the mode it already had, which
+	 * costs a derive and changes nothing.
+	 */
+	const handleGalleryWatermark = async mode => {
+		const saved = await patch({ watermark: mode });
+
+		if (!saved) {
+			return;
+		}
+
+		const inheriting = saved.photos.filter(photo => !tabOf(saved, photo).watermark).length;
+
+		if (inheriting === 0) {
+			return;
+		}
+
+		if (!window.confirm(`Appliquer ce filigrane aux ${inheriting} photo(s) déjà en ligne qui suivent le réglage par défaut ?\n\nLa régénération porte sur toute la galerie et les archives ZIP en cache seront supprimées. Sinon le réglage ne vaudra que pour les prochains envois.`)) {
+			return;
+		}
+
+		await runReprocess();
 	};
 
 	// A toggle rather than a one-way reveal, because the panel now drives the marks in
@@ -461,32 +566,34 @@ export function GalleryEditor() {
 							<input type='checkbox' checked={gallery.downloadsEnabled} onChange={event => patch({ downloadsEnabled: event.target.checked })} />
 							<span>Téléchargements autorisés</span>
 						</label>
-
-						<label className='admin-toggle'>
-							<input type='checkbox' checked={gallery.hdEnabled} disabled={!gallery.downloadsEnabled} onChange={event => patch({ hdEnabled: event.target.checked })} />
-							<span>Fichiers haute définition</span>
-						</label>
-
 					</div>
 
-					{/* The first switch is the master one — it alone decides whether the API
-					    signs anything under d/ — and the second only covers the photos that
-					    are in no set. Each set has its own pair, in the panel below. */}
+					{/* The master switch, and nothing else: it alone decides whether the API
+					    signs anything under d/. Which files each tab actually offers — the
+					    photos in no category included — is set per tab in the panel below,
+					    because those settings have to be able to differ from one another. */}
 					<p className='admin-hint'>
-						Sans haute définition, le client télécharge l’aperçu web filigrané, photo par photo comme en archive ZIP. Les catégories peuvent avoir leurs propres réglages, mais
-						couper les téléchargements ici les coupe partout.
+						Interrupteur général : le couper coupe les téléchargements de toute la galerie, catégories comprises. Le détail (haute définition ou simple aperçu web) se règle
+						catégorie par catégorie dans le panneau « Catégories ».
 					</p>
 
 					<div className='field'>
-						<label htmlFor='gallery-watermark'>Filigrane</label>
-						<select id='gallery-watermark' value={gallery.watermark} onChange={event => patch({ watermark: event.target.value })}>
+						<label htmlFor='gallery-watermark'>Filigrane par défaut</label>
+						<select id='gallery-watermark' value={gallery.watermark} onChange={event => handleGalleryWatermark(event.target.value)}>
 							{Object.entries(WATERMARK_LABELS).map(([value, label]) => (
 								<option key={value} value={value}>
 									{label}
 								</option>
 							))}
 						</select>
-						<p className='admin-hint'>Changer ce réglage n’affecte que les nouvelles photos. Utilisez « Régénérer » pour appliquer aux photos existantes.</p>
+						{/* The one thing it is easy to expect and not get: a category carrying its
+						    own mode ignores this entirely. The photos already uploaded are handled
+						    by the offer that follows the change, so the hint no longer has to send
+						    the photographer to a button. */}
+						<p className='admin-hint'>
+							S’applique aux onglets qui n’ont pas leur propre réglage. Le changer propose de régénérer les photos déjà en ligne, puisque le filigrane est incrusté dans
+							les fichiers.
+						</p>
 					</div>
 
 					<div className='admin-panel__footer'>
@@ -510,7 +617,11 @@ export function GalleryEditor() {
 						sets={sets}
 						counts={setCounts}
 						ungroupedCount={ungroupedCount}
+						ungrouped={gallery.ungrouped}
 						downloadsEnabled={gallery.downloadsEnabled}
+						onUpdateUngrouped={changes => patch({ ungrouped: changes })}
+						onWatermark={handleWatermark}
+						onRegenerate={handleRegenerateSet}
 						onCreate={title => withGallery(() => adminApi.createSet(gid, title))}
 						onUpdate={(sid, changes) => withGallery(() => adminApi.updateSet(gid, sid, changes))}
 						onReorder={order => withGallery(() => adminApi.reorderSets(gid, order))}
@@ -520,7 +631,7 @@ export function GalleryEditor() {
 
 				<article className='admin-panel admin-panel--wide'>
 					<h2 className='admin-panel__title'>Photos</h2>
-					<Uploader gid={gid} sets={sets} archived={gallery.status === "archived"} onUploaded={reconcile} />
+					<Uploader gid={gid} sets={sets} archived={gallery.status === "archived"} watermarkOf={setId => watermarkFor(gallery, setId)} onUploaded={reconcile} />
 
 					<div className='admin-panel__toolbar'>
 						<button className='button-secondary' type='button' onClick={reconcile}>
@@ -599,7 +710,7 @@ export function GalleryEditor() {
 						onSetCover={pid => patch({ coverPid: pid })}
 						onDelete={handleDeletePhoto}
 						onCaption={(pid, caption) => adminApi.updatePhotos(gid, { captions: { [pid]: caption } }).then(payload => setGallery(payload.gallery))}
-						onAssign={(pid, sid) => withGallery(() => adminApi.updatePhotos(gid, { sets: { [pid]: sid } }))}
+						onAssign={handleAssign}
 					/>
 				</article>
 			</div>

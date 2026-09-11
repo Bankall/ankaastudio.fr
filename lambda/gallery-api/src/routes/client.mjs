@@ -26,6 +26,7 @@ import {
 	jobKey,
 	MAX_SELECTION_VISITORS,
 	photoDownloads,
+	photoWatermark,
 	readyCover,
 	selectionKey,
 	selectionOf,
@@ -119,9 +120,9 @@ async function resolveGallery(request, slug) {
 async function cleanCoverReady(gallery) {
 	const cover = readyCover(gallery);
 
-	// Nothing is marked in the first place, so the ordinary preview is already the
-	// clean image and a second copy of it would be waste.
-	if (!cover || gallery.watermark === "none") {
+	// Nothing is marked in the tab this photo sits in, so the ordinary preview is
+	// already the clean image and a second copy of it would be waste.
+	if (!cover || photoWatermark(gallery, cover) === "none") {
 		return false;
 	}
 

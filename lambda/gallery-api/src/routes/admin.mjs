@@ -30,15 +30,19 @@ import {
 	originalKey,
 	originalPrefix,
 	pendingPhoto,
+	photoWatermark,
 	readyCover,
 	selectionKey,
 	selectionVisitors,
+	setOf,
 	sharePreviewKey,
 	sidecarKey,
 	sidecarPrefix,
 	thumbKey,
+	ungroupedSettings,
 	upsertIndex,
 	WATERMARK_MODES,
+	watermarkFor,
 	webKey,
 	zipMarkerPrefix,
 	zipPrefix
@@ -107,6 +111,22 @@ async function uniqueSlug(desired, selfId) {
 }
 
 /**
+ * A bucket's watermark override, read from its patch body: one of the modes, or null
+ * for "whatever the gallery says".
+ *
+ * `undefined` — the field was not sent — is a third answer, and the only one that must
+ * leave the record alone, so oneOf()'s own null is not enough to distinguish them. The
+ * empty string is accepted as null because that is what an unset <select> submits.
+ */
+function watermarkOverride(body, field) {
+	if (body?.watermark === undefined) {
+		return undefined;
+	}
+
+	return body.watermark === null || body.watermark === "" ? null : oneOf(body.watermark, field, WATERMARK_MODES);
+}
+
+/**
  * The derivatives that exist only for whichever photo is currently the cover: its
  * unmarked copy, and the JPEG a link preview is drawn from.
  *
@@ -121,28 +141,45 @@ function coverDerivatives(gallery) {
 }
 
 /**
- * Derives the link preview's JPEG if the current cover has none.
+ * Derives whichever of the two the current cover is missing.
  *
- * Called when the editor opens rather than when the gallery is shared: the link
- * usually leaves through the copy button, which never reaches the API at all, and
- * the first crawler to arrive before this JPEG exists settles for the watermarked
- * preview. Purely opportunistic, so it must never be why a gallery fails to load.
+ * Called whenever a save can have moved the cover, and again when the editor opens,
+ * rather than left to the first client read: that read builds its manifest from what
+ * exists *now*, so the job it queues lands too late for it and the visitor who opens
+ * the link first — usually the client, right after the photographer sent it — is the
+ * one served the watermarked hero. Picking a new cover and switching the watermark on
+ * both leave the gallery in that state, and nothing else derives afterwards.
+ *
+ * The link itself usually leaves through the copy button, which never reaches the API
+ * at all, so these are also the last moments that reliably precede a share.
+ *
+ * Purely opportunistic: the save has already gone through by the time this runs, and
+ * every caller has a marked preview to fall back on, so nothing here may throw.
  */
-async function warmSharePreview(gallery) {
+async function warmCoverDerivatives(gallery) {
 	const cover = readyCover(gallery);
 
 	if (!cover) {
 		return;
 	}
 
-	try {
-		if (await objectExists(sharePreviewKey(gallery.id, cover.pid, cover.rev))) {
-			return;
-		}
+	// Nothing marked in the tab the cover happens to sit in means its ordinary web
+	// preview is already the clean image — clientProjection says as much by withholding
+	// coverImage — so that copy would be waste. The card's JPEG is wanted either way:
+	// the crawlers it exists for cannot read the WebP the preview is.
+	const wanted = [
+		...(photoWatermark(gallery, cover) === "none" ? [] : [["cover", coverImageKey(gallery.id, cover.pid, cover.rev)]]),
+		["share", sharePreviewKey(gallery.id, cover.pid, cover.rev)]
+	];
 
-		await invokeProcessor({ gid: gallery.id, pid: cover.pid, extension: cover.extension, rev: cover.rev, variant: "share" });
-	} catch (error) {
-		console.warn("Share preview not queued", { gid: gallery.id, error: error.message });
+	for (const [variant, key] of wanted) {
+		try {
+			if (!(await objectExists(key))) {
+				await invokeProcessor({ gid: gallery.id, pid: cover.pid, extension: cover.extension, rev: cover.rev, variant });
+			}
+		} catch (error) {
+			console.warn("Cover derivative not queued", { gid: gallery.id, pid: cover.pid, variant, error: error.message });
+		}
 	}
 }
 
@@ -234,8 +271,9 @@ async function readGallery({ request, params }) {
 	const origin = publicOrigin(request);
 
 	// Opening the editor is the last thing that reliably happens before a link is
-	// shared, so it is where the card's image gets built.
-	await warmSharePreview(data);
+	// shared, so it is where the cover's own images get built — and the safety net
+	// for a cover whose derive was queued from a save that then failed.
+	await warmCoverDerivatives(data);
 
 	// The admin grid renders the same previews from the same protected v/ prefix
 	// the client sees, so it needs the same signed cookies — an admin session is
@@ -257,16 +295,34 @@ async function updateGallery({ request, params }) {
 		clientEmail: email(body.clientEmail, "email du client"),
 		status: oneOf(body.status, "statut", GALLERY_STATUSES),
 		watermark: oneOf(body.watermark, "filigrane", WATERMARK_MODES),
-		// The master switch, and the HD setting for photos in no set. Each set carries
-		// its own pair; see the set routes below.
-		downloadsEnabled: bool(body.downloadsEnabled, "téléchargements"),
-		hdEnabled: bool(body.hdEnabled, "haute définition")
+		// The master switch alone. The photos in no set have their own pair below, and
+		// each set carries one too; see the set routes.
+		downloadsEnabled: bool(body.downloadsEnabled, "téléchargements")
 	};
 
 	for (const [field, value] of Object.entries(assignments)) {
 		if (value !== null) {
 			gallery[field] = value;
 		}
+	}
+
+	// The remainder's own settings, patched like a set's: the panel sends one field at a
+	// time, so the others keep whatever they had. Writing it also retires the top-level
+	// `hdEnabled` it supersedes, or ungroupedSettings() would keep a second, now stale
+	// answer for the same question.
+	if (body.ungrouped !== undefined) {
+		const current = ungroupedSettings(gallery);
+		const downloads = bool(body.ungrouped?.downloadsEnabled, "téléchargements hors catégorie");
+		const hd = bool(body.ungrouped?.hdEnabled, "haute définition hors catégorie");
+		const watermark = watermarkOverride(body.ungrouped, "filigrane hors catégorie");
+
+		gallery.ungrouped = {
+			downloadsEnabled: downloads ?? current.downloadsEnabled,
+			hdEnabled: hd ?? current.hdEnabled,
+			watermark: watermark === undefined ? current.watermark : watermark
+		};
+
+		delete gallery.hdEnabled;
 	}
 
 	// These three distinguish "absent" from "explicitly cleared", so they cannot
@@ -296,8 +352,8 @@ async function updateGallery({ request, params }) {
 
 		// The outgoing cover's own derivatives have no reason to exist any more, and
 		// leaving them behind would slowly turn "one clean preview per gallery" into
-		// one per photo that was ever the cover. The new cover's are derived lazily —
-		// on the first client read, and on the next open of this editor.
+		// one per photo that was ever the cover. The incoming cover's are queued after
+		// the save, by warmCoverDerivatives().
 		const outgoing = coverDerivatives(gallery);
 
 		gallery.coverPid = body.coverPid;
@@ -353,6 +409,10 @@ async function updateGallery({ request, params }) {
 		// gone, and the originals need up to 48 hours to become readable again. This
 		// starts that clock; Régénérer les aperçus does the rebuild once it is done.
 		await thawOriginals(gallery.id);
+	} else {
+		// Neither of the other two branches wants this: one has just deleted every
+		// derivative the gallery had, and the other cannot read an original yet.
+		await warmCoverDerivatives(gallery);
 	}
 
 	return json(200, { gallery: adminProjection(gallery) });
@@ -456,15 +516,13 @@ async function createUploads({ request, params }) {
 }
 
 /**
- * Called by the uploader once an object is actually in S3.
- *
- * Triggering from the browser rather than an S3 event keeps the infrastructure
- * simpler (no notification wiring, no circular stack dependency) and lets us
- * pass the gallery's watermark mode straight through. If a tab dies mid-batch,
- * `reconcile` finds and re-queues whatever never got processed.
- */
-/**
  * Records the uploaded photos as pending, then queues a processor for each.
+ *
+ * Called by the uploader once an object is actually in S3. Triggering from the browser
+ * rather than an S3 event keeps the infrastructure simpler — no notification wiring, no
+ * circular stack dependency — and it is what lets the batch carry the watermark mode of
+ * the tab it was dropped into. If a tab dies mid-batch, `reconcile` finds and re-queues
+ * whatever never got processed.
  *
  * Writing them to the record first is what makes the grid live: a tile appears
  * immediately and the editor polls until it turns into an image, instead of the
@@ -490,8 +548,9 @@ async function processPhotos({ request, params }) {
 	// Which tab the batch lands in. Absent or null means the ungrouped remainder,
 	// which is where every upload went before sets existed.
 	const target = str(request.body?.setId, "catégorie", { max: 40 });
+	const targetSet = target ? (gallery.sets ?? []).find(set => set.id === target) : null;
 
-	if (target && !(gallery.sets ?? []).some(set => set.id === target)) {
+	if (target && !targetSet) {
 		throw badRequest("Cette catégorie n'existe pas.");
 	}
 
@@ -515,7 +574,12 @@ async function processPhotos({ request, params }) {
 	await saveGallery(gallery, etag);
 
 	if (!isArchived) {
-		await Promise.all(queued.map(item => invokeProcessor({ gid: gallery.id, ...item, watermark: gallery.watermark, rev: 1 })));
+		// The mark is burnt in here and nowhere else, so it is the target tab's mode that
+		// decides — a category set to "aucun filigrane" is how a batch is uploaded clean
+		// without touching the rest of the gallery.
+		const watermark = watermarkFor(gallery, targetSet);
+
+		await Promise.all(queued.map(item => invokeProcessor({ gid: gallery.id, ...item, watermark, rev: 1 })));
 	}
 
 	return json(202, { queued: isArchived ? 0 : queued.length, archived: isArchived ? queued.length : 0 });
@@ -633,7 +697,9 @@ async function reconcile({ request, params }) {
 			}
 
 			gallery.photos.push(pendingPhoto(item, gallery.photos.length));
-			requeue.push({ ...item, originalName: "", rev: 1 });
+			// Adopted ungrouped, so that is the mode it is derived with — the tab it was
+			// really uploaded into died with the browser that knew.
+			requeue.push({ ...item, originalName: "", rev: 1, watermark: watermarkFor(gallery, null) });
 			continue;
 		}
 
@@ -646,7 +712,13 @@ async function reconcile({ request, params }) {
 		// Stamping it again is what keeps this idempotent: the editor polls every
 		// few seconds, and without it every poll would queue the photo once more.
 		photo.queuedAt = new Date().toISOString();
-		requeue.push({ pid: photo.pid, extension: photo.extension ?? item.extension, originalName: photo.originalName ?? "", rev: photo.rev ?? 1 });
+		requeue.push({
+			pid: photo.pid,
+			extension: photo.extension ?? item.extension,
+			originalName: photo.originalName ?? "",
+			rev: photo.rev ?? 1,
+			watermark: photoWatermark(gallery, photo)
+		});
 	}
 
 	if (gallery.coverPid && !gallery.photos.some(photo => photo.pid === gallery.coverPid)) {
@@ -655,7 +727,9 @@ async function reconcile({ request, params }) {
 
 	await saveGallery(gallery, etag);
 
-	await Promise.all(requeue.map(item => invokeProcessor({ gid: gallery.id, ...item, watermark: gallery.watermark })));
+	// Each item carries its own mode: which tab a photo sits in is what decides it, and
+	// a reconcile can be repairing photos from several at once.
+	await Promise.all(requeue.map(item => invokeProcessor({ gid: gallery.id, ...item })));
 
 	const origin = publicOrigin(request);
 
@@ -669,6 +743,72 @@ async function reconcile({ request, params }) {
 }
 
 // --- photo edits -----------------------------------------------------------
+
+/**
+ * The photos whose burnt-in watermark no longer matches the tab they are in.
+ *
+ * A tab's mode is baked into the derivatives, so a photo moved between tabs still carries
+ * the mark of the one it came from — which shows, and in one direction loses the
+ * protection the destination asked for. `before` holds the modes read *before* the move,
+ * keyed by pid; anything absent from it has not moved and is left alone, as is any photo
+ * whose mode did not actually change, most moves being a re-filing inside one mode.
+ *
+ * Bumps the revs, so it must run before saveGallery() — and flushRestamp() after it, no
+ * rev being advertised before it is stored.
+ */
+function planRestamp(gallery, before) {
+	// "ready" only: an archived photo's original is in cold storage and would fail to
+	// derive, and one still processing is already in flight. Both come back with the right
+	// mark through the reconcile that thaws them, or through ⟳.
+	const photos = gallery.photos.filter(photo => photo.status === "ready" && before.has(photo.pid) && photoWatermark(gallery, photo) !== before.get(photo.pid));
+
+	const stale = photos.flatMap(photo => [
+		thumbKey(gallery.id, photo.pid, photo.rev),
+		webKey(gallery.id, photo.pid, photo.rev),
+		coverImageKey(gallery.id, photo.pid, photo.rev),
+		sharePreviewKey(gallery.id, photo.pid, photo.rev),
+		hdKey(gallery.id, photo.pid, photo.rev)
+	]);
+
+	for (const photo of photos) {
+		photo.rev += 1;
+		photo.status = "processing";
+		// Dates the new attempt, so a reconcile landing while these are in flight does not
+		// read them as abandoned and queue them twice.
+		photo.queuedAt = new Date().toISOString();
+	}
+
+	return { photos, stale };
+}
+
+/** Queues the plan and drops what it replaces. Resolves to the number requeued. */
+async function flushRestamp(gallery, { photos, stale }) {
+	if (photos.length === 0) {
+		return 0;
+	}
+
+	await Promise.all(
+		photos.map(photo =>
+			invokeProcessor({
+				gid: gallery.id,
+				pid: photo.pid,
+				extension: photo.extension,
+				originalName: photo.originalName,
+				watermark: photoWatermark(gallery, photo),
+				rev: photo.rev
+			})
+		)
+	);
+
+	// Old derivatives go only after the new revs are queued, so a failure mid-way leaves
+	// the photos viewable rather than blank.
+	await deleteKeys(stale);
+	// ZIPs are keyed by photo revs, so any cached archive holding one of these is stale.
+	await deletePrefix(zipPrefix(gallery.id));
+	await deletePrefix(zipMarkerPrefix(gallery.id));
+
+	return photos.length;
+}
 
 async function patchPhotos({ request, params }) {
 	await requireAdmin(request);
@@ -698,7 +838,9 @@ async function patchPhotos({ request, params }) {
 	}
 
 	// { [pid]: setId | null } — null moves the photo out of every set, back to the
-	// gallery's own download settings.
+	// settings of the ungrouped remainder.
+	const moved = new Map();
+
 	if (body.sets !== undefined) {
 		if (typeof body.sets !== "object" || body.sets === null) {
 			throw badRequest("Les catégories doivent être fournies sous forme d'objet.");
@@ -716,14 +858,19 @@ async function patchPhotos({ request, params }) {
 			const photo = gallery.photos.find(candidate => candidate.pid === pid);
 
 			if (photo) {
+				// Read before the move, while the photo still resolves to the tab its
+				// derivatives were made for.
+				moved.set(pid, photoWatermark(gallery, photo));
 				photo.setId = target;
 			}
 		}
 	}
 
+	const restamp = planRestamp(gallery, moved);
+
 	await saveGallery(gallery, etag);
 
-	return json(200, { gallery: adminProjection(gallery) });
+	return json(200, { gallery: adminProjection(gallery), requeued: await flushRestamp(gallery, restamp) });
 }
 
 async function deletePhoto({ request, params }) {
@@ -754,6 +901,13 @@ async function deletePhoto({ request, params }) {
 	}
 
 	await saveGallery(gallery, etag);
+
+	// With no cover chosen, the first photo is standing in — so deleting any photo can
+	// hand the role to a different one, which needs the two derivatives the outgoing
+	// cover had. An explicit cover that survived this delete keeps its own.
+	if (!gallery.coverPid) {
+		await warmCoverDerivatives(gallery);
+	}
 
 	return json(200, { gallery: adminProjection(gallery) });
 }
@@ -789,7 +943,7 @@ async function createSet({ request, params }) {
 		throw badRequest(`${MAX_SETS} catégories maximum par galerie.`);
 	}
 
-	gallery.sets.push(newSet({ id: newSetId(), title, hdEnabled: gallery.hdEnabled }));
+	gallery.sets.push(newSet({ id: newSetId(), title, hdEnabled: ungroupedSettings(gallery).hdEnabled }));
 
 	await saveGallery(gallery, etag);
 
@@ -811,6 +965,18 @@ async function updateSet({ request, params }) {
 		if (value !== null) {
 			set[field] = value;
 		}
+	}
+
+	// Out of the loop above, which reads null as "not sent": null is a value here, the
+	// one that hands the decision back to the gallery. Nothing is re-derived here — the
+	// mode only reaches photos derived after it, and whether the ones already in the set
+	// are re-derived is the photographer's call: the admin offers a scoped reprocess as
+	// soon as this returns. Unlike a move, where the photo's mode changes under it without
+	// anyone choosing a new one.
+	const watermark = watermarkOverride(request.body, "filigrane de la catégorie");
+
+	if (watermark !== undefined) {
+		set.watermark = watermark;
 	}
 
 	// Cached archives are keyed by the variant they were built from, so flipping HD
@@ -840,38 +1006,59 @@ async function reorderSets({ request, params }) {
 }
 
 /**
- * Removes a set, but never its photos: they go back to the gallery's own
- * settings. Deleting a tab must not be a way to delete photographs.
+ * Removes a set, but never its photos: they go back to the settings of the ungrouped
+ * remainder. Deleting a tab must not be a way to delete photographs.
+ *
+ * It is a move like any other, so its photos are re-derived if the remainder asks for a
+ * different watermark than the set did — otherwise deleting a category is a way to leave
+ * unmarked photos in a marked gallery.
  */
 async function deleteSet({ request, params }) {
 	await requireAdmin(request);
 	const { data: gallery, etag } = await loadGallery(params.gid);
 	findSet(gallery, params.sid);
 
-	gallery.sets = gallery.sets.filter(candidate => candidate.id !== params.sid);
+	const moved = new Map();
 
+	// Before the set goes, while its own mode is still what these photos resolve to.
 	for (const photo of gallery.photos) {
 		if (photo.setId === params.sid) {
+			moved.set(photo.pid, photoWatermark(gallery, photo));
 			photo.setId = null;
 		}
 	}
 
+	gallery.sets = gallery.sets.filter(candidate => candidate.id !== params.sid);
+
+	const restamp = planRestamp(gallery, moved);
+
 	await saveGallery(gallery, etag);
 
-	return json(200, { gallery: adminProjection(gallery) });
+	return json(200, { gallery: adminProjection(gallery), requeued: await flushRestamp(gallery, restamp) });
 }
 
 /**
- * Re-derives every photo, e.g. after flipping the watermark mode.
+ * Re-derives photos, e.g. after flipping a watermark mode.
  *
  * Derivative keys carry a rev suffix, so a new rev is a new URL: the old edge
  * cache entries simply age out and no CloudFront invalidation is needed. This is
  * also how a gallery comes back from being archived, since by then the originals
  * are the only thing left.
+ *
+ * `setId` narrows it to one tab, which is what makes a per-category watermark usable
+ * after the fact: taking the mark off a hundred photos should not mean re-deriving the
+ * two thousand around them. Absent means the whole gallery — and null is neither, it
+ * means the photos in no category, so the three cases are told apart by presence.
  */
 async function reprocess({ request, params }) {
 	await requireAdmin(request);
 	const { data: gallery, etag } = await loadGallery(params.gid);
+	const scoped = request.body?.setId !== undefined;
+	const sid = scoped ? str(request.body.setId, "catégorie", { max: 40 }) : null;
+
+	if (sid && !(gallery.sets ?? []).some(set => set.id === sid)) {
+		throw badRequest("Cette catégorie n'existe pas.");
+	}
 
 	// Rebuilding into a gallery that still answers 410 derives files nobody can fetch
 	// and that the next save would delete again. The status change is also what starts
@@ -897,8 +1084,13 @@ async function reprocess({ request, params }) {
 		throw conflict(`Restauration en cours : ${originals.restoring} original(aux) encore indisponible(s). Réessayez plus tard — comptez jusqu'à 48 h au total.`);
 	}
 
+	// Resolved through setOf() so a photo whose set was deleted counts as ungrouped
+	// here exactly as it does everywhere else — otherwise the one scope that can never
+	// be selected by name would be the one holding it.
+	const targets = scoped ? gallery.photos.filter(photo => (setOf(gallery, photo)?.id ?? null) === sid) : gallery.photos;
+
 	const stale = [];
-	for (const photo of gallery.photos) {
+	for (const photo of targets) {
 		stale.push(
 			thumbKey(gallery.id, photo.pid, photo.rev),
 			webKey(gallery.id, photo.pid, photo.rev),
@@ -919,13 +1111,16 @@ async function reprocess({ request, params }) {
 	await saveGallery(gallery, etag);
 
 	await Promise.all(
-		gallery.photos.map(photo =>
+		targets.map(photo =>
 			invokeProcessor({
 				gid: gallery.id,
 				pid: photo.pid,
 				extension: photo.extension,
 				originalName: photo.originalName,
-				watermark: gallery.watermark,
+				// Per photo, not per gallery: this is what applies a category's own mode to
+				// the photos already in it, which is the only way a mark comes off — or
+				// goes on — once it has been burnt into a derivative.
+				watermark: photoWatermark(gallery, photo),
 				rev: photo.rev
 			})
 		)
@@ -934,11 +1129,13 @@ async function reprocess({ request, params }) {
 	// Old derivatives go only after the new revs are queued, so a failure mid-way
 	// leaves the gallery viewable rather than blank.
 	await deleteKeys(stale);
-	// ZIPs are keyed by photo revs, so every cached archive is now stale.
+	// ZIPs are keyed by photo revs, so any cached archive holding one of these is now
+	// stale. Dropping the lot rather than working out which: an archive is rebuilt on
+	// demand, and a mixed selection makes "which" nearly every one of them anyway.
 	await deletePrefix(zipPrefix(gallery.id));
 	await deletePrefix(zipMarkerPrefix(gallery.id));
 
-	return json(202, { queued: gallery.photos.length });
+	return json(202, { queued: targets.length });
 }
 
 // --- sharing ---------------------------------------------------------------

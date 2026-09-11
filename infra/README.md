@@ -269,10 +269,11 @@ so the new password works — and the old one stops — within that window:
 ./infra/bootstrap.sh password
 ```
 
-**Re-watermark an existing gallery** — change the mode in the editor, then press
-*Régénérer les aperçus*. This bumps every photo's `rev`, so new URLs are served
-immediately with no invalidation, and old derivatives are deleted only after the
-new ones are queued.
+**Re-watermark an existing gallery** — change the mode in the editor and accept the
+regenerate it offers; *Régénérer les aperçus* (whole gallery) and ⟳ (one tab) do the
+same thing on demand. Either way it bumps the `rev` of the photos in scope, so new
+URLs are served immediately with no invalidation, old derivatives are deleted only
+after the new ones are queued, and the cached ZIPs — keyed by `rev` — are dropped.
 
 **A batch of uploads that never finished** (tab closed mid-upload) — press
 *Actualiser* in the editor. `reconcile` folds in every sidecar it finds and
@@ -281,24 +282,41 @@ re-queues any original that never produced one.
 ### Sets
 
 A set is a named group of photos inside a gallery, shown to the client as a tab
-with its own download switches. They live on the record as `sets: [{ id, title,
-downloadsEnabled, hdEnabled }]` — the array *is* the tab order — and a photo
-belongs to one through its own `setId`.
+with its own download switches and its own watermark. They live on the record as
+`sets: [{ id, title, downloadsEnabled, hdEnabled, watermark }]` — the array *is* the
+tab order — and a photo belongs to one through its own `setId`.
 
 Nothing needed migrating and nothing needs creating: `setId: null` means the photo
-is served under the gallery's own switches, which is what every photo did before
-sets existed. The API always sends the client at least one group, so a gallery
-with no sets is simply a gallery with one unnamed set, and the tab bar does not
-render.
+is served under `gallery.ungrouped`, a `{ downloadsEnabled, hdEnabled, watermark }`
+triple whose defaults are what every photo got before sets existed. The API always sends the
+client at least one group, so a gallery with no sets is simply a gallery with one
+unnamed set, and the tab bar does not render.
 
 Consequences worth knowing:
 
-- **The gallery's `downloadsEnabled` is the master switch.** A set's own flag can
-  only close what the gallery has opened; `hdEnabled` is the set's call, falling
-  back to the gallery's for ungrouped photos.
+- **The gallery's `downloadsEnabled` is the master switch, and now only that.** A
+  set's own flag can only close what the gallery has opened, and so can the
+  remainder's — which is why the ungrouped photos have a pair of their own rather
+  than borrowing the master. While they shared it, closing downloads for the loose
+  photos closed them for every set too, which is the state a gallery is in right
+  after its first upload. Records written before that split keep `hdEnabled` at the
+  top level; `ungroupedSettings()` reads it as the remainder's until the first save
+  of those switches replaces it.
+- **A set's `watermark` is `null` unless it overrides the gallery's.** `watermarkFor()`
+  resolves a tab's own mode, then `gallery.watermark`, and the mode is *burnt into*
+  the derivatives — so it only reaches photos derived after it is set. The admin
+  offers a scoped reprocess (`POST /reprocess` with `{ setId }`) as soon as the mode
+  changes, which is what takes a mark off — or puts one on — the photos already there.
+- **A photo that changes tab is re-derived when its effective mode changes.**
+  `PATCH /photos` with `sets` and `DELETE /sets/<sid>` both compare
+  `photoWatermark()` before and after the move and requeue only the `ready` photos
+  whose answer differs, so a photo cannot sit in a tab wearing another tab's mark.
+  Photos left `processing` or `archived` are skipped; the reconcile that thaws them,
+  or ⟳, catches them up.
 - **Deleting a set never deletes photographs.** Its photos go back to `setId:
-  null`, i.e. to the gallery's settings. Sets are created empty for the same
-  reason — creating and deleting one are both cheap and reversible.
+  null`, i.e. to `gallery.ungrouped` — including its watermark, per the point above.
+  Sets are created empty for the same reason — creating and deleting one are both
+  cheap and reversible.
 - **HD off does not mean no archive.** Those photos go into the ZIP as the same
   watermarked preview the tiles hand over, which is why an archive can be mixed.
 - **A set's photos are not a separate order.** The record keeps one flat photo

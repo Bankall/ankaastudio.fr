@@ -9,6 +9,36 @@
 // different names for the same tab.
 export const DEFAULT_SET_TITLE = "Galerie";
 
+// The watermark modes, as the photographer reads them. Here rather than in the editor
+// because the mode is set in two places: once for the gallery, and once per tab that
+// wants a different one — and `""`, the empty option, is that override left unset.
+export const WATERMARK_LABELS = {
+	preview: "Aperçus uniquement (recommandé)",
+	all: "Aperçus et fichiers HD",
+	none: "Aucun filigrane"
+};
+
+export const INHERITED_WATERMARK_LABEL = "Filigrane de la galerie";
+
+/**
+ * The mode a photo dropped into this tab will be derived with — the same resolution the
+ * API's own watermarkFor() does, so the uploader can say it before the upload starts.
+ *
+ * `setId` is the uploader's target: "" or null is the ungrouped remainder.
+ */
+export const watermarkFor = (gallery, setId) =>
+	(setId ? (gallery.sets ?? []).find(set => set.id === setId) : gallery.ungrouped)?.watermark ?? gallery.watermark;
+
+/**
+ * The tab whose settings govern a photo: its set, or the ungrouped remainder — including
+ * when its `setId` points at a set that has since been deleted, which is where the API
+ * puts it too.
+ *
+ * Unresolved on purpose, unlike watermarkFor(): a caller counting the photos a change to
+ * the gallery's default would reach needs to know which tabs have no mode of their own.
+ */
+export const tabOf = (gallery, photo) => (gallery.sets ?? []).find(set => set.id === photo.setId) ?? gallery.ungrouped ?? {};
+
 /**
  * Photos distributed into their sets, in tab order — the same shape and the same
  * rules as the API's `groupBySet`.

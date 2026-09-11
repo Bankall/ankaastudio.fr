@@ -36,13 +36,19 @@ export const zipMarkerKey = (gid, hash) => `db/zips/${gid}/${hash}.json`;
 export const zipMarkerPrefix = gid => `db/zips/${gid}/`;
 
 export const WATERMARK_KEY = "assets/watermark.png";
+// The gallery's mode, and the override a set or the ungrouped remainder may carry
+// instead — null there means "whatever the gallery says". Unlike the download
+// switches this one is not a permission but an instruction to the processor: it is
+// baked into the derivatives, so changing it only reaches photos that are derived
+// afterwards. watermarkFor() resolves the two.
 export const WATERMARK_MODES = ["preview", "all", "none"];
 export const GALLERY_STATUSES = ["draft", "published", "archived"];
 
 // Sets are named groups of photos inside a gallery, shown to the client as tabs,
-// each with its own download switches. They are optional: a photo that belongs to
-// no set is served under the gallery's own switches, which is what every photo did
-// before sets existed — so nothing needs migrating.
+// each with its own download switches. They are optional: a photo that belongs to no
+// set is served under the gallery's `ungrouped` pair, which is a set's pair in all but
+// name and starts out permitting what every photo got before sets existed — so nothing
+// needs migrating.
 //
 // The title given to that ungrouped remainder, on the rare occasion it is shown
 // next to real sets.
@@ -74,10 +80,11 @@ export function newGallery({ id, slug, title, clientName = "", clientEmail = "",
 		// null password = anyone holding the link gets in.
 		password: null,
 		watermark: "preview",
-		// The master switch, plus the settings an ungrouped photo is served under.
-		// A set overrides them for its own photos.
+		// The master switch: nothing below it can offer a download it refuses.
 		downloadsEnabled: true,
-		hdEnabled: true,
+		// The settings the photos in no set get. Their own, not the master's; see
+		// ungroupedSettings().
+		ungrouped: { downloadsEnabled: true, hdEnabled: true, watermark: null },
 		expiresAt: null,
 		sets: [],
 		photos: [],
@@ -87,23 +94,47 @@ export function newGallery({ id, slug, title, clientName = "", clientEmail = "",
 }
 
 /**
- * A named group of photos, with its own download switches.
+ * The settings the photos in no set get — a set's own fields, minus the identity.
+ *
+ * A pair of switches of its own rather than the gallery's, because the gallery's
+ * `downloadsEnabled` is the master over every set as well: while the two were the
+ * same field, closing downloads for the loose photos closed them for every category
+ * too, and the panel had no way to say otherwise. That is also why the remainder's
+ * row was read-only.
+ *
+ * Absent on records written before it existed, where an ungrouped photo was served
+ * under the gallery's own pair — the master, and an `hdEnabled` that lived at the top
+ * level. The fallback reproduces exactly that, so no gallery changes behaviour by
+ * being read through here, and the first save of the remainder's settings replaces
+ * both with this.
+ */
+export const ungroupedSettings = gallery =>
+	gallery.ungrouped ?? { downloadsEnabled: true, hdEnabled: Boolean(gallery.hdEnabled), watermark: null };
+
+/**
+ * A named group of photos, with its own download switches and watermark.
  *
  * The array order is the tab order — there is no sortIndex, because a handful of
  * sets reorder by rewriting the array and a second source of truth for something
  * this small only invites the two to disagree.
  *
- * `downloadsEnabled` starts true and `hdEnabled` copies the gallery's, so a fresh
- * set behaves exactly like the gallery it was created in until it is told
- * otherwise. The gallery's own `downloadsEnabled` remains the master: a set can
+ * `downloadsEnabled` starts true and `hdEnabled` copies the ungrouped remainder's, so
+ * a fresh set behaves like the loose photos it is about to be filled from until it is
+ * told otherwise. The gallery's own `downloadsEnabled` remains the master: a set can
  * refuse what the gallery allows, never the other way round.
+ *
+ * `watermark` starts null — the gallery's mode — rather than copying it, because it is
+ * the one setting whose change has to be followed by a re-derive: an override that
+ * tracks the gallery keeps a set that was never given a mode of its own from quietly
+ * needing one.
  */
 export function newSet({ id, title, hdEnabled = true }) {
 	return {
 		id,
 		title,
 		downloadsEnabled: true,
-		hdEnabled: Boolean(hdEnabled)
+		hdEnabled: Boolean(hdEnabled),
+		watermark: null
 	};
 }
 
@@ -237,28 +268,43 @@ export function setOf(gallery, photo) {
 }
 
 /**
- * What a set permits. With no set, what the gallery permits.
+ * What a set permits. With no set, what the ungrouped remainder permits.
  *
- * The gallery's `downloadsEnabled` is checked in both branches because it is the
- * master switch — it is what the admin list badge reports and what the infra
- * guarantees, so a set must not be able to open a door the gallery has shut. HD is
- * the set's own call: that is the point of having them.
+ * Both are read the same way, which is the whole reason the remainder carries a
+ * set-shaped pair: one switch of its own for downloads, one for HD, under the
+ * gallery's master. That master is checked here rather than left to the caller — it is
+ * what the admin list badge reports and what the infra guarantees, so nothing below it
+ * may open a door it has shut.
  *
  * `zip` is not a switch of its own. A client who may save every photo one by one
  * gains nothing from being refused the single request that does it in one file, so
  * the archive simply follows `enabled`.
  */
 export function downloadsFor(gallery, set) {
-	const enabled = Boolean(gallery.downloadsEnabled) && (set ? Boolean(set.downloadsEnabled) : true);
+	const own = set ?? ungroupedSettings(gallery);
+	const enabled = Boolean(gallery.downloadsEnabled) && Boolean(own.downloadsEnabled);
 
 	return {
 		enabled,
-		hd: enabled && Boolean(set ? set.hdEnabled : gallery.hdEnabled),
+		hd: enabled && Boolean(own.hdEnabled),
 		zip: enabled
 	};
 }
 
 export const photoDownloads = (gallery, photo) => downloadsFor(gallery, setOf(gallery, photo));
+
+/**
+ * The mode the processor must be given for a photo landing in this set — the set's
+ * own, or the gallery's where it has none.
+ *
+ * A permission can be answered per request; this cannot. It decides what is burnt into
+ * a derivative, so it is read at derive time only, and the answer for a photo already
+ * on disk is whatever its sidecar recorded rather than whatever this returns now. That
+ * is the whole reason a per-set mode needs a per-set re-derive to go with it.
+ */
+export const watermarkFor = (gallery, set) => (set ?? ungroupedSettings(gallery)).watermark ?? gallery.watermark;
+
+export const photoWatermark = (gallery, photo) => watermarkFor(gallery, setOf(gallery, photo));
 
 /**
  * Photos distributed into their sets, in tab order.
@@ -376,6 +422,10 @@ export function adminProjection(gallery) {
 	return {
 		...rest,
 		hasPassword: Boolean(password),
+		// Resolved rather than passed through, so the editor renders one switch per
+		// bucket without having to know that an older record keeps the remainder's HD
+		// setting at the top level.
+		ungrouped: ungroupedSettings(gallery),
 		sets: gallery.sets ?? [],
 		photos: (gallery.photos ?? [])
 			.slice()

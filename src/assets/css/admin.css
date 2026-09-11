@@ -559,8 +559,19 @@
 	color: var(--muted);
 }
 
-.admin-sets__count,
-.admin-sets__hint {
+/* Narrow on purpose: the row already carries two switches and a name, and the mode
+   names are long enough to read truncated. */
+.admin-sets__watermark {
+	flex: 0 1 13rem;
+	min-width: 0;
+	padding: 0.35rem 0.4rem;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius-sm);
+	background: rgba(255, 255, 255, 0.9);
+	font-size: 0.82rem;
+}
+
+.admin-sets__count {
 	font-size: 0.78rem;
 	color: var(--muted);
 	white-space: nowrap;
@@ -601,6 +612,11 @@
 	border: 1px solid var(--line-strong);
 	border-radius: var(--radius-sm);
 	background: var(--surface-strong);
+}
+
+.admin-uploader__watermark {
+	font-size: 0.8rem;
+	color: var(--muted);
 }
 
 /* --- photo manager ------------------------------------------------------- */

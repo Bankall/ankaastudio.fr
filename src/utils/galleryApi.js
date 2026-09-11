@@ -117,6 +117,9 @@ export const adminApi = {
 	listGalleries: () => request("/api/admin/galleries"),
 	createGallery: payload => request("/api/admin/galleries", { method: "POST", body: payload }),
 	readGallery: gid => request(`/api/admin/galleries/${gid}`),
+	// payload: any subset of the record's own fields. `downloadsEnabled` is the master
+	// switch; `ungrouped: { downloadsEnabled?, hdEnabled? }` is the pair the photos in
+	// no category are served under, merged field by field like a set's patch.
 	updateGallery: (gid, payload) => request(`/api/admin/galleries/${gid}`, { method: "PATCH", body: payload }),
 	deleteGallery: gid => request(`/api/admin/galleries/${gid}`, { method: "DELETE" }),
 
@@ -126,7 +129,10 @@ export const adminApi = {
 	processPhotos: (gid, photos, setId = null) => request(`/api/admin/galleries/${gid}/process`, { method: "POST", body: { photos, setId } }),
 	pending: gid => request(`/api/admin/galleries/${gid}/pending`),
 	reconcile: gid => request(`/api/admin/galleries/${gid}/reconcile`, { method: "POST" }),
-	reprocess: gid => request(`/api/admin/galleries/${gid}/reprocess`, { method: "POST" }),
+	// Re-derives everything, or — when a scope is given — only one tab's photos:
+	// `{ setId: null }` is the ungrouped remainder, `{ setId: "s_…" }` one category.
+	// Omitting the body entirely is what means "the whole gallery".
+	reprocess: (gid, scope) => request(`/api/admin/galleries/${gid}/reprocess`, { method: "POST", body: scope }),
 
 	// patch: { order?: pid[], captions?: { [pid]: string }, sets?: { [pid]: setId | null } }
 	updatePhotos: (gid, patch) => request(`/api/admin/galleries/${gid}/photos`, { method: "PATCH", body: patch }),

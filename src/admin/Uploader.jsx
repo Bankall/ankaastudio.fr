@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { adminApi, uploadToS3 } from "../utils/galleryApi.js";
-import { DEFAULT_SET_TITLE } from "../utils/gallerySets.js";
+import { DEFAULT_SET_TITLE, WATERMARK_LABELS } from "../utils/gallerySets.js";
 
 // Four at a time: enough to saturate a domestic upstream, few enough that each
 // file's progress bar still moves visibly.
@@ -47,7 +47,7 @@ async function mapWithLimit(items, limit, task) {
 	return results;
 }
 
-export function Uploader({ gid, sets = [], archived = false, onUploaded }) {
+export function Uploader({ gid, sets = [], archived = false, watermarkOf, onUploaded }) {
 	const [items, setItems] = useState([]);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
@@ -161,6 +161,13 @@ export function Uploader({ gid, sets = [], archived = false, onUploaded }) {
 							</option>
 						))}
 					</select>
+
+					{/* Said before the drop, because it cannot be undone after one: the mark is
+					    burnt into the derivatives as they are made, and changing the setting
+					    later only reaches these photos through a regenerate. */}
+					{watermarkOf ?
+						<span className='admin-uploader__watermark'>Filigrane : {WATERMARK_LABELS[watermarkOf(target)] ?? "—"}</span>
+					:	null}
 				</div>
 			:	null}
 
