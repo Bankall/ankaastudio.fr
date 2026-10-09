@@ -18,25 +18,19 @@ export function AboutPage() {
 
 			<section className='section'>
 				<div className='container about-section'>
-					<SectionHeading level={1} eyebrow='Qui suis-je ?' title='Photographe animalière & Graphiste' />
+					<SectionHeading level={1} eyebrow='Qui suis-je ?' title='Hello, moi c’est Sophie' />
 
 					<span className='about-section__description text-center'>
-						<p>Moi, c’est Sophie, photographe et graphiste basée dans la Marne, spécialisée dans l’univers canin.</p>
 						<p>Ankaa Studio est né à la rencontre de mes deux univers : la photographie et le graphisme, avec une passion qui les relie naturellement : les animaux.</p>
 						<p>
-							Photographe animalière et graphiste, j’aime créer des images qui ne se contentent pas d’être jolies, mais qui racontent quelque chose. Un regard, une attitude, une course, une complicité… tous
-							ces petits détails qui font qu’un animal est profondément unique.
-						</p>
-						<p>
-							Mon approche photographique est naturelle, sensible et spontanée. Je cherche à saisir les émotions telles qu’elles sont, sans gommer les personnalités ni provoquer à tout prix la photo
-							parfaite.
+							Mon objectif est simple : immortaliser l’amour et l’énergie unique de chaque animal. Capturer leur personnalité, leurs expressions, pour créer des souvenirs que vous pourrez revivre encore et
+							encore.
 						</p>
 						<p>Mon regard de graphiste influence également mon travail : composition, lumière, couleurs, harmonie et sens du détail font partie intégrante de mon univers créatif.</p>
 						<p>
 							Inspiré par les étoiles et par Ankaa, l’étoile du Phénix, le studio est né avec l’envie de donner une place particulière à ces instants parfois fugaces et d’en faire des souvenirs qui
 							traversent le temps.
 						</p>
-						<p>Ankaa Studio, c’est un regard créatif posé sur leur histoire… et sur la vôtre.</p>
 					</span>
 
 					<div className='grid grid--3 mt-2 mb-2'>
@@ -60,8 +54,8 @@ export function AboutPage() {
 						<p>Puis est arrivée Bulma, ma petite dernière, une jeune Berger Australien pleine de vie, qui apporte une nouvelle énergie à notre quotidien.</p>
 						<p>Et enfin, il y a Hysis, ma chatte, qui partage ma vie depuis maintenant 14 ans et qui m’accompagne depuis bien avant la naissance d’Ankaa Studio.</p>
 						<p>
-							Trois personnalités très différentes, mais une même place immense dans ma vie. Ils sont aussi, chacun à leur manière, une partie de l’histoire et de la sensibilité que je mets aujourd’hui dans
-							Ankaa Studio.
+							Trois personnalités très différentes, mais une même place immense dans ma vie. Elles sont aussi, chacune à leur manière, une partie de l’histoire et de la sensibilité que je mets aujourd’hui
+							dans Ankaa Studio.
 						</p>
 					</span>
 				</div>
