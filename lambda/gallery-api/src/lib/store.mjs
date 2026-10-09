@@ -10,6 +10,7 @@
 // upstream talks in terms of these functions, so it is a one-file change.
 
 import { DeleteObjectsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 export const s3 = new S3Client({});
 export const BUCKET = process.env.MEDIA_BUCKET;
@@ -134,6 +135,35 @@ export async function objectExists(key) {
 
 		throw error;
 	}
+}
+
+/**
+ * A short-lived URL for one object, signed with this function's own credentials.
+ *
+ * The one door onto `originals/`, which no CloudFront behaviour maps to: a client's
+ * high-definition download is the upload itself, and copying every original under
+ * `media/` just to keep it on the CDN would double the largest thing in the bucket.
+ * Everything else the client fetches still goes through CloudFront — this is signed
+ * per request precisely because it must not be, and must not be cached at an edge.
+ *
+ * `filename` is applied to the response rather than stored on the object, which is what
+ * lets a photo uploaded long before any of this download under its own name. Both forms
+ * of the header are sent: the quoted one for software that reads no further, and RFC
+ * 5987's for the accents that survive it. The plain form strips the accents rather than
+ * blanking them, so the fallback reads `Ete-2.jpg` and not `_t_-2.jpg`, and the encoded
+ * form escapes the apostrophe French filenames are full of — it is the delimiter of the
+ * `charset'lang'value` syntax it sits inside.
+ */
+export function presignedGetUrl(key, { filename = "", expiresIn = 300 } = {}) {
+	const ascii = filename
+		.normalize("NFD")
+		.replace(/\p{Diacritic}/gu, "")
+		.replace(/[^\x20-\x7e]/g, "_")
+		.replace(/["\\]/g, "");
+
+	const disposition = filename ? `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename).replace(/'/g, "%27")}` : "attachment";
+
+	return getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: key, ResponseContentDisposition: disposition }), { expiresIn });
 }
 
 /**

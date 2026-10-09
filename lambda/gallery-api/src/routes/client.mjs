@@ -11,12 +11,13 @@ import { emailButton, emailLayout, emailNote, emailParagraph, escapeHtml, sendEm
 import { verifyPassword } from "../lib/passwords.mjs";
 import { invokeProcessor } from "../lib/processor.mjs";
 import { getSecrets } from "../lib/secrets.mjs";
-import { getJson, objectExists, putJson, updateJson } from "../lib/store.mjs";
+import { getJson, objectExists, presignedGetUrl, putJson, updateJson } from "../lib/store.mjs";
 import { signedUrl } from "../lib/cfsign.mjs";
 import { email as emailField, str, stringArray } from "../lib/validate.mjs";
 import {
 	clientProjection,
 	coverImageKey,
+	downloadSource,
 	downloadsFor,
 	emptyIndex,
 	galleryKey,
@@ -25,6 +26,7 @@ import {
 	isExpired,
 	jobKey,
 	MAX_SELECTION_VISITORS,
+	originalKey,
 	photoDownloads,
 	photoWatermark,
 	readyCover,
@@ -210,7 +212,7 @@ async function refresh({ request, params }) {
 
 // --- downloads -------------------------------------------------------------
 
-/** The master switch: with this off nothing under `d/` is ever signed. */
+/** The master switch: with this off nothing is ever signed — no `d/` key, no original. */
 function assertDownloadable(gallery) {
 	if (!gallery.downloadsEnabled) {
 		throw forbidden("Les téléchargements sont désactivés pour cette galerie.");
@@ -262,6 +264,12 @@ function assertJobDownloadable(gallery, job) {
  *
  * The redirect is what keeps the shareable link clean — the client only ever
  * sees /api/g/<slug>/download/<pid>, never a signature.
+ *
+ * Where it points depends on what this photo's download *is*. The original is signed
+ * against S3 directly, because no CloudFront behaviour maps to `originals/` and adding
+ * one would mean either a second copy of every original under `media/` or the filename
+ * being stamped on the upload itself. A marked download is a derivative like any other
+ * and stays on the CDN.
  */
 async function downloadPhoto({ request, params }) {
 	const gallery = await resolveGallery(request, params.slug);
@@ -274,6 +282,17 @@ async function downloadPhoto({ request, params }) {
 	}
 
 	assertPhotoDownloadable(gallery, photo, "hd");
+
+	if (downloadSource(photo) === "original") {
+		return redirect(
+			await presignedGetUrl(originalKey(gallery.id, photo.pid, photo.extension), {
+				// Their own file back under its own name. The extension comes with it: an
+				// original is whatever was uploaded, TIFF and HEIC included.
+				filename: photo.originalName || `${photo.pid}.${photo.extension}`,
+				expiresIn: DOWNLOAD_URL_TTL_SECONDS
+			})
+		);
+	}
 
 	const { cfPrivateKey } = await getSecrets();
 	const origin = publicOrigin(request);
@@ -404,31 +423,42 @@ async function downloadZip({ request, params }) {
 		throw scoped.length === 0 ? badRequest("Aucune photo à télécharger.") : forbidden("Les téléchargements sont désactivés pour ces photos.");
 	}
 
-	// HD off does not mean no archive: those photos go in as the same web-sized
-	// preview the tiles hand over, watermark and all. It is per photo because it is
-	// per set — one archive can carry both.
+	// An archive holds exactly what the per-photo button hands over: the original for
+	// a high-definition download, the marked JPEG where the mark is burnt in, and the
+	// web-sized preview where HD is off — because HD off does not mean no archive. It
+	// is per photo because it is per set, and one archive can carry all three.
 	const ordered = allowed
 		.slice()
 		.sort((a, b) => a.photo.sortIndex - b.photo.sortIndex)
-		.map(({ photo, downloads }) => ({
-			pid: photo.pid,
-			rev: photo.rev,
-			originalName: photo.originalName,
-			// `bytes` is the HD file's size, which is only an upper bound for a web
-			// entry. That is the safe direction: the zipper splits on it, so it may
-			// split earlier than needed but never produces an oversized part.
-			bytes: photo.bytes ?? 0,
-			variant: downloads.hd ? "hd" : "web"
-		}));
+		.map(({ photo, downloads }) => {
+			const source = downloads.hd ? downloadSource(photo) : "web";
+
+			return {
+				pid: photo.pid,
+				rev: photo.rev,
+				originalName: photo.originalName,
+				// The original's key carries its own extension, and it also names the entry
+				// inside the archive: an original is whatever was uploaded.
+				extension: photo.extension,
+				// Only used to partition the archive into parts, so overstating a size is
+				// harmless — it splits earlier than it had to — and understating one is not.
+				// Hence the original's own size for an original entry, and the download's
+				// size (an upper bound) for a web one.
+				bytes: (source === "original" ? photo.originalBytes ?? photo.bytes : photo.bytes) ?? 0,
+				variant: source
+			};
+		});
 
 	// The variant is part of what the archive *is*, so it belongs in the hash —
 	// otherwise turning HD off for a set would keep serving its HD archive from
 	// cache, and turning it back on would serve the watermarked one. "hd" contributes
-	// nothing to the digest, so every all-HD archive built before this existed stays
-	// a cache hit.
+	// nothing to the digest, which is what keeps every archive built out of marked
+	// JPEGs a cache hit; the originals archives that replaced the unmarked ones hash
+	// differently on purpose, so nobody is served a re-encode from cache.
 	const fingerprint = ordered.map(photo => `${photo.pid}_${photo.rev}${photo.variant === "hd" ? "" : `:${photo.variant}`}`).join(",");
 	const hash = createHash("sha1").update(fingerprint).digest("hex").slice(0, 16);
-	const variant = ordered.every(photo => photo.variant === "hd") ? "hd" : ordered.every(photo => photo.variant === "web") ? "web" : "mixed";
+	const variants = new Set(ordered.map(photo => photo.variant));
+	const variant = variants.size === 1 ? [...variants][0] : "mixed";
 	// Recorded so pickup can re-check them: see assertJobDownloadable.
 	const setIds = [...new Set(allowed.map(entry => setOf(gallery, entry.photo)?.id ?? null))];
 
@@ -481,7 +511,7 @@ async function downloadZip({ request, params }) {
 						hash,
 						// The per-photo variant is what the zipper reads; this one is only the
 						// fallback for a photo that names none.
-						variant: variant === "mixed" ? "hd" : variant,
+						variant: variant === "mixed" ? "original" : variant,
 						photos: ordered
 					})
 				)

@@ -8,8 +8,14 @@
 // Outputs, per photo revision:
 //   media/g/<gid>/v/t/<pid>_<rev>.webp    600px  watermarked preview
 //   media/g/<gid>/v/w/<pid>_<rev>.webp   2048px  watermarked preview
-//   media/g/<gid>/d/hd/<pid>_<rev>.jpg   full    download (clean unless mode=all)
 //   db/galleries/<gid>/photos/<pid>.json         sidecar, incl. inline LQIP
+//
+// Plus, and only under `watermark: "all"`:
+//   media/g/<gid>/d/hd/<pid>_<rev>.jpg   full    marked download
+//
+// There is no unmarked HD derivative, because there is nothing for it to improve
+// on: a download sold as high definition is served as the uploaded file itself,
+// straight out of `originals/`. Only a marked download has to be a new file.
 //
 // A `variant: "cover"` invocation instead writes only:
 //   media/g/<gid>/v/c/<pid>_<rev>.webp   2048px  unmarked, for the gallery cover
@@ -323,24 +329,28 @@ export const handler = async event => {
 
 		const [thumb, web] = await Promise.all([derivePreview(THUMB_WIDTH, 72), derivePreview(WEB_WIDTH, 80)]);
 
-		// The HD file is what a client actually takes home, so it keeps a
-		// copyright tag and, by default, no watermark at all.
-		const hdFitted = fittedSize(width, height, Math.min(width, HD_MAX_EDGE));
-		let hdPipeline = base.clone().resize({ width: Math.min(width, HD_MAX_EDGE), fit: "inside", withoutEnlargement: true });
-
-		if (markHd) {
-			const overlay = await watermarkOverlay(hdFitted.width, hdFitted.height);
+		// Under `watermark: "all"` the mark has to be *in* the file the client keeps,
+		// so that file cannot be their upload and has to be derived: a full-size JPEG,
+		// marked, with a copyright tag. Every other mode hands over the original, and
+		// deriving a second-generation copy of it would only lose detail and store
+		// another ~26% of the bucket to do it.
+		async function deriveMarkedHd(fitted) {
+			let pipeline = base.clone().resize({ width: Math.min(width, HD_MAX_EDGE), fit: "inside", withoutEnlargement: true });
+			const overlay = await watermarkOverlay(fitted.width, fitted.height);
 
 			if (overlay) {
-				hdPipeline = hdPipeline.composite([overlay]);
+				pipeline = pipeline.composite([overlay]);
 			}
+
+			return pipeline
+				.jpeg({ quality: 90, mozjpeg: true, chromaSubsampling: "4:4:4" })
+				.withMetadata({ icc: "srgb" })
+				.withExif({ IFD0: { Copyright: "Ankaa Studio", Artist: "Ankaa Studio" } })
+				.toBuffer();
 		}
 
-		const hd = await hdPipeline
-			.jpeg({ quality: 90, mozjpeg: true, chromaSubsampling: "4:4:4" })
-			.withMetadata({ icc: "srgb" })
-			.withExif({ IFD0: { Copyright: "Ankaa Studio", Artist: "Ankaa Studio" } })
-			.toBuffer();
+		const hdFitted = markHd ? fittedSize(width, height, Math.min(width, HD_MAX_EDGE)) : null;
+		const hd = hdFitted ? await deriveMarkedHd(hdFitted) : null;
 
 		// ~200 bytes of WebP, inlined into the sidecar so the gallery can blur-up
 		// without a second request per photo.
@@ -351,11 +361,16 @@ export const handler = async event => {
 		await Promise.all([
 			putDerivative(`media/g/${gid}/v/t/${pid}_${rev}.webp`, thumb, "image/webp"),
 			putDerivative(`media/g/${gid}/v/w/${pid}_${rev}.webp`, web, "image/webp"),
-			putDerivative(`media/g/${gid}/d/hd/${pid}_${rev}.jpg`, hd, "image/jpeg", {
-				// Set here rather than at request time: CloudFront passes the object's
-				// own header through, so downloads land with a sensible filename.
-				ContentDisposition: `attachment; filename="${downloadName.replace(/"/g, "")}"`
-			})
+			...(hd ?
+				[
+					putDerivative(`media/g/${gid}/d/hd/${pid}_${rev}.jpg`, hd, "image/jpeg", {
+						// Set here rather than at request time: CloudFront passes the object's
+						// own header through, so downloads land with a sensible filename. An
+						// original is named per response instead — it is signed, not cached.
+						ContentDisposition: `attachment; filename="${downloadName.replace(/"/g, "")}"`
+					})
+				]
+			:	[])
 		]);
 
 		await writeSidecar(gid, pid, {
@@ -364,11 +379,14 @@ export const handler = async event => {
 			extension,
 			originalName,
 			status: "ready",
-			w: hdFitted.width,
-			h: hdFitted.height,
+			// `w`/`h` and `bytes` describe the file the client downloads — the marked JPEG
+			// where there is one, the original otherwise. The zipper partitions an archive
+			// on `bytes`, so it has to be that file's size and not the source's.
+			w: hdFitted?.width ?? width,
+			h: hdFitted?.height ?? height,
 			sourceW: width,
 			sourceH: height,
-			bytes: hd.length,
+			bytes: hd ? hd.length : input.length,
 			originalBytes: input.length,
 			lqip: `data:image/webp;base64,${lqipBuffer.toString("base64")}`,
 			takenAt: shotDate(metadata),
@@ -377,7 +395,7 @@ export const handler = async event => {
 			processedAt: new Date().toISOString()
 		});
 
-		console.info("Processed photo", { gid, pid, rev, width, height, hdBytes: hd.length });
+		console.info("Processed photo", { gid, pid, rev, width, height, originalBytes: input.length, markedHdBytes: hd?.length ?? null });
 
 		return { ok: true, pid, rev };
 	} catch (error) {

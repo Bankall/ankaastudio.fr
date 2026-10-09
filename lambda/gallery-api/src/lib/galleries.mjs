@@ -25,6 +25,9 @@ export const coverImageKey = (gid, pid, rev) => `media/g/${gid}/v/c/${pid}_${rev
 // fetched by a crawler that will not wait and may not read WebP. Derived for the
 // current cover only, exactly like the clean copy above.
 export const sharePreviewKey = (gid, pid, rev) => `media/g/${gid}/v/s/${pid}_${rev}.jpg`;
+// The marked HD download, and the only reason one is derived at all: a photo whose
+// gallery asked for the mark on the file the client keeps. Everything else is served
+// as the untouched original — see downloadSource().
 export const hdKey = (gid, pid, rev) => `media/g/${gid}/d/hd/${pid}_${rev}.jpg`;
 export const zipPrefix = gid => `media/g/${gid}/d/zip/`;
 export const zipKey = (gid, hash, suffix = "") => `media/g/${gid}/d/zip/${hash}${suffix}.zip`;
@@ -305,6 +308,21 @@ export const photoDownloads = (gallery, photo) => downloadsFor(gallery, setOf(ga
 export const watermarkFor = (gallery, set) => (set ?? ungroupedSettings(gallery)).watermark ?? gallery.watermark;
 
 export const photoWatermark = (gallery, photo) => watermarkFor(gallery, setOf(gallery, photo));
+
+/**
+ * Which file a client's high-definition download actually is.
+ *
+ * `"original"` — the upload itself, byte for byte, which is the only honest answer for
+ * a download sold as high definition: a re-encode of what the photographer exported is
+ * a second generation of it, and no JPEG quality setting gets that back.
+ *
+ * `"hd"` is the one exception: a photo derived with `watermark: "all"` has the mark
+ * burnt into the file the client keeps, and that file cannot be the original. Read off
+ * the photo, never off the gallery's current setting — the sidecar records the mode the
+ * file on S3 was actually made under, and a mode changed since then reaches this photo
+ * only when it is re-derived.
+ */
+export const downloadSource = photo => (photo?.watermark === "all" ? "hd" : "original");
 
 /**
  * Photos distributed into their sets, in tab order.

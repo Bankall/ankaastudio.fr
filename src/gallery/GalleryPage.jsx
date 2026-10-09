@@ -318,8 +318,9 @@ export function GalleryPage() {
 			// offered either way: with HD off the watermarked web preview is what they
 			// get, which is still better than a gallery with no way to keep a photo.
 			if (downloadsByPid.get(pid)?.hd) {
-				// The API answers 302 to a short-lived signed URL, and the object carries
-				// Content-Disposition: attachment, so this downloads without navigating.
+				// The API answers 302 to a short-lived signed URL — their own uploaded file,
+				// uncompressed — and the response carries Content-Disposition: attachment,
+				// so this downloads without navigating.
 				window.location.href = galleryApi.downloadUrl(slug, pid);
 
 				return;

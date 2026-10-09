@@ -22,8 +22,11 @@ what makes the whole thing work without CORS and with same-origin cookies:
 | `/media/*`   | media bucket (OAC)        | signed cookies (previews) / signed URLs (downloads) |
 
 The media bucket's policy only grants CloudFront `media/*`. `db/` (the JSON
-database) and `originals/` are unreachable from the internet by construction, not
-by configuration — there is no signature that can reach them.
+database) and `originals/` are off the CDN by construction, not by configuration —
+there is no CloudFront signature that can reach them. `originals/` has exactly one
+door, and it is not CloudFront: a high-definition download is the uploaded file
+itself, handed over as a 5-minute **presigned S3 GET** signed with the API
+function's own role. `db/` has no door at all.
 
 ### Two access zones
 
@@ -35,13 +38,21 @@ by configuration — there is no signature that can reach them.
   deletes both as soon as another photo becomes the cover: `v/c/` is the gallery's
   opening image, `v/s/` the JPEG a messaging app draws when the link is pasted
   into a conversation (see [Link previews](#link-previews)).
-- `media/g/<gid>/d/*` — HD files and ZIPs. **Never** covered by a cookie; each
-  download gets its own 5-minute signed URL from the API.
+- `media/g/<gid>/d/*` — ZIPs, and the one kind of HD file that has to be derived:
+  a photo whose watermark mode is `all` carries the mark in the download too, so
+  that download cannot be the original. **Never** covered by a cookie; each one
+  gets its own 5-minute signed URL from the API.
 
-Download blocking is therefore not a UI toggle: with `downloadsEnabled: false`
-the API simply refuses to sign anything under `d/`, and nothing else can. A set
-may narrow that (see [Sets](#sets)) but never widen it — the gallery's flag is
-checked first, on every route that signs.
+Everything else a client downloads is their original, presigned straight off
+`originals/` — no re-encode, no second copy of the largest thing in the bucket, and
+old galleries got it the day this shipped without regenerating anything. The
+filename is set on the response rather than on the object, which is what makes that
+true.
+
+Download blocking is therefore not a UI toggle: with `downloadsEnabled: false` the
+API signs nothing — no `d/` URL, no original — and nothing else can. A set may
+narrow that (see [Sets](#sets)) but never widen it — the gallery's flag is checked
+first, on every route that signs.
 
 ### Two things about the API origin that will bite you
 
@@ -67,7 +78,7 @@ Two consequences, both non-obvious and both already handled in this repo:
 | Function            | Trigger                     | Job                                                            |
 | ------------------- | --------------------------- | -------------------------------------------------------------- |
 | `ankaa-gallery-api` | CloudFront `/api/*`, `/gallery/*` | auth, gallery CRUD, presigned uploads, signing, SES sharing, the gallery page |
-| `ankaa-gallery-processor` | async invoke from the API | sharp: watermarked previews, HD JPEG, LQIP, per-photo sidecar |
+| `ankaa-gallery-processor` | async invoke from the API | sharp: watermarked previews, LQIP, per-photo sidecar (plus a marked HD JPEG under mode `all`) |
 | `ankaa-gallery-zipper`    | async invoke from the API | streams a store-mode ZIP into S3 multipart                    |
 
 **Single-writer rule:** only the API writes `db/galleries/<gid>.json`, always
@@ -78,11 +89,12 @@ document for them to race on.
 **Content-addressed derivatives:** keys carry `_<rev>`, so everything under
 `media/` is served `immutable` for a year and re-processing never needs an
 invalidation. ZIPs are keyed by `sha1` of the exact photo revisions requested,
-each tagged with the derivative it was taken from (`<pid>_<rev>` for HD,
-`<pid>_<rev>:web` for a photo whose set has HD switched off and which therefore
-goes in as the watermarked preview). So asking twice costs one build, flipping an
-HD switch can never serve the wrong quality from cache, and one archive can mix
-both — a favourites selection spans sets that need not agree.
+each tagged with the file it was taken from (`<pid>_<rev>:original` for the upload
+itself, a bare `<pid>_<rev>` for a marked HD JPEG, `<pid>_<rev>:web` for a photo
+whose set has HD switched off and which therefore goes in as the watermarked
+preview). So asking twice costs one build, flipping an HD switch can never serve
+the wrong quality from cache, and one archive can mix all three — a favourites
+selection spans sets that need not agree.
 
 **The API sends the archive email, not the zipper.** A client asking for an
 archive gives an email address (never verified — it is there to name the download
@@ -307,6 +319,14 @@ Consequences worth knowing:
   the derivatives — so it only reaches photos derived after it is set. The admin
   offers a scoped reprocess (`POST /reprocess` with `{ setId }`) as soon as the mode
   changes, which is what takes a mark off — or puts one on — the photos already there.
+- **`all` is the only mode that changes what a download *is*.** Under `preview` and
+  `none`, an HD download is the uploaded file presigned off `originals/`, so there is
+  nothing to derive and nothing to regenerate. Under `all` the mark has to be inside
+  the file the client keeps, which no original can be: the processor derives a
+  full-size marked JPEG (`media/g/<gid>/d/hd/`) and that is what gets signed. The
+  choice is read off `photo.watermark` — the mode the file on S3 was actually made
+  under — never off the tab's current setting, so a mode changed a minute ago cannot
+  make a download 404 or quietly drop a mark.
 - **A photo that changes tab is re-derived when its effective mode changes.**
   `PATCH /photos` with `sets` and `DELETE /sets/<sid>` both compare
   `photoWatermark()` before and after the move and requeue only the `ready` photos
@@ -411,10 +431,23 @@ distribution. Realistically the bill is S3 storage plus a few cents of Lambda:
 originals move to `GLACIER_IR` after 60 days, archived originals continue to
 `DEEP_ARCHIVE` (tag-driven, `ankaa-state=archived`), and cached ZIPs expire after
 30 days (tag-driven, `ankaa-kind=zip`, scoped to `media/g/`). For scale: 2 TB of
-originals is roughly $22/month live and $2/month fully archived. HD derivatives are
-the one thing with no lifecycle rule — they are ~26 % of each original's size and
-sit in `STANDARD` for as long as the gallery does, which is a large part of why
-archiving deletes them.
+originals is roughly $22/month live and $2/month fully archived. Derivatives are the
+one thing with no lifecycle rule — they sit in `STANDARD` for as long as the gallery
+does, which is a large part of why archiving deletes them; marked HD JPEGs are the
+heavy ones at ~26 % of an original each, and only tabs set to `all` have any.
+
+Serving originals is the one thing that does *not* ride the free tier: a presigned
+GET and the zipper both read S3 directly, at ~$0.09/GB egress instead of
+CloudFront's first free terabyte, and an original past 60 days is in `GLACIER_IR`,
+which adds ~$0.03/GB retrieval. That is the price of a download that is genuinely
+the photographer's file: a 40 MB original costs about half a cent to hand over, and
+the alternative was re-encoding every one of them and storing the copy forever.
+
+Photos derived *before* that changed still have an unmarked `d/hd/*.jpg` sitting in
+`STANDARD`. Nothing serves them any more — the new fingerprint hashes `:original`
+separately, so no cached archive is served from the old ones either — and each goes
+the first time its photo is re-derived, deleted or archived. ⟳ on a tab reclaims them
+immediately; otherwise they cost ~26 % of the originals they came from until then.
 
 **Where things are:**
 
@@ -426,11 +459,12 @@ db/selections/<gid>.json             client favourites
 db/jobs/<jid>.json                   ZIP job progress (expires at 7 days)
 db/zips/<gid>/<hash>.json            built-archive marker (parts list)
 db/downloads.json                    download notifications, capped at 300
-originals/<gid>/<pid>.<ext>          untouched uploads → GLACIER_IR at 60 days,
+originals/<gid>/<pid>.<ext>          untouched uploads — and the HD download itself
+                                     (presigned S3 GET) → GLACIER_IR at 60 days,
                                      → DEEP_ARCHIVE once tagged ankaa-state=archived
 media/g/<gid>/v/t|w/<pid>_<rev>.webp previews (signed cookies)
 media/g/<gid>/v/c/<pid>_<rev>.webp   unmarked cover, one per gallery
-media/g/<gid>/d/hd/<pid>_<rev>.jpg   HD downloads (signed URLs)
+media/g/<gid>/d/hd/<pid>_<rev>.jpg   marked HD downloads, mode `all` only (signed URLs)
 media/g/<gid>/d/zip/<hash>.zip       cached archives (expire at 30 days)
 assets/watermark.png                 the mark
 ```

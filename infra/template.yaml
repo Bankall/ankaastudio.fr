@@ -128,8 +128,10 @@ Resources:
                           SSEAlgorithm: AES256
             # The only cross-origin call in the whole system: the uploader POSTs a
             # presigned form straight to S3, bypassing CloudFront, so this is the one
-            # place that needs CORS. Nothing else talks to the bucket directly —
-            # previews and downloads are same-origin through the distribution.
+            # place that needs CORS. Previews are same-origin through the distribution,
+            # and the one other request that reaches the bucket directly — the presigned
+            # GET behind a high-definition download — is a top-level navigation, which
+            # CORS has nothing to say about.
             #
             # It needs a preflight at all only because the uploader listens for
             # upload progress: any listener on xhr.upload sets the upload listener
@@ -237,7 +239,10 @@ Resources:
 
     # Scoped to media/* on purpose: db/ and originals/ live in the same bucket
     # but no CloudFront behaviour maps to them AND the policy refuses them.
-    # Unreachable from the internet by construction, not by convention.
+    # Off the CDN by construction, not by convention. The one way an original
+    # reaches a client is a 5-minute presigned GET signed by the API function's
+    # own role — that is a client's high-definition download, uncompressed — and
+    # nothing at all reaches db/.
     MediaBucketPolicy:
         Type: AWS::S3::BucketPolicy
         Properties:

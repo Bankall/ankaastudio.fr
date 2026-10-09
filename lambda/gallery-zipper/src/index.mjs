@@ -36,18 +36,24 @@ const zipKey = (gid, hash, suffix) => `media/g/${gid}/d/zip/${hash}${suffix}.zip
 const markerKey = (gid, hash) => `db/zips/${gid}/${hash}.json`;
 
 /**
- * Which derivative each entry is built from.
+ * Which file each entry is built from.
  *
- * A set with HD downloads switched off still allows archives — the client just gets
- * the same web-sized preview the tiles hand over, watermark included. It is decided
- * per photo because it is decided per set, and one archive can span sets that
- * disagree. The API says so on each entry; anything unrecognised (or a job queued
- * before this existed) falls back to the payload's own `variant`, and then to HD,
- * which is what every archive once was.
+ * `original` is the normal one: a high-definition download is the upload itself, so
+ * the archive carries those bytes untouched, under whatever extension they arrived
+ * with. `hd` is the marked full-size JPEG, which exists only where the watermark had
+ * to be burnt into the download. And a set with HD downloads switched off still allows
+ * archives — the client just gets the same web-sized preview the tiles hand over,
+ * watermark included.
+ *
+ * It is decided per photo because it is decided per set, and one archive can span sets
+ * that disagree. The API says so on each entry; anything unrecognised (or a job queued
+ * before this existed) falls back to the payload's own `variant`, and then to HD, which
+ * is what every archive once was.
  */
 const SOURCES = {
-	hd: { key: (gid, pid, rev) => `media/g/${gid}/d/hd/${pid}_${rev}.jpg`, extension: "jpg" },
-	web: { key: (gid, pid, rev) => `media/g/${gid}/v/w/${pid}_${rev}.webp`, extension: "webp" }
+	original: { key: (gid, photo) => `originals/${gid}/${photo.pid}.${photo.extension}`, extension: photo => photo.extension || "jpg" },
+	hd: { key: (gid, photo) => `media/g/${gid}/d/hd/${photo.pid}_${photo.rev}.jpg`, extension: () => "jpg" },
+	web: { key: (gid, photo) => `media/g/${gid}/v/w/${photo.pid}_${photo.rev}.webp`, extension: () => "webp" }
 };
 
 async function putJson(key, data, extra = {}) {
@@ -72,8 +78,8 @@ async function readJob(jid) {
 /**
  * Splits the photo list so no single archive exceeds MAX_PART_BYTES.
  *
- * Partitioning up front rather than mid-stream: the sidecars already record each
- * HD file's size, so the split points are known before a byte moves.
+ * Partitioning up front rather than mid-stream: the sidecars already record the size
+ * of each photo's download, so the split points are known before a byte moves.
  */
 function partition(photos, maxBytes) {
 	const parts = [];
@@ -105,7 +111,7 @@ function entryNames(photos) {
 	const used = new Set();
 
 	return photos.map((photo, index) => {
-		const extension = photo.source.extension;
+		const extension = photo.source.extension(photo);
 		const stem = String(photo.originalName || photo.pid)
 			.replace(/\.[^.]+$/, "")
 			.replace(/[^\p{L}\p{N}._-]+/gu, "-")
@@ -198,10 +204,7 @@ async function buildPart({ gid, photos, key, filename, onProgress }) {
 			}
 
 			const photo = photos[index];
-			pending.set(
-				index,
-				s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: photo.source.key(gid, photo.pid, photo.rev) }))
-			);
+			pending.set(index, s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: photo.source.key(gid, photo) })));
 		};
 
 		for (let index = 0; index < Math.min(PREFETCH, photos.length); index += 1) {
