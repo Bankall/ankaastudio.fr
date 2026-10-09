@@ -47,7 +47,6 @@ export function SiteFooter() {
 				</div>
 
 				<div className='site-footer__bottom'>
-					<span>{siteConfig.message}</span>
 					<span>© {new Date().getFullYear()} Ankaa Studio</span>
 				</div>
 			</div>

@@ -28,34 +28,39 @@ export const socialLinks = [
 
 export const photographyCards = [
 	{
-		url: "/home/Capture d’écran 2026-08-17 à 16.36.32.png",
+		url: "/home/Fichier 4.jpg",
 		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		url: "/home/Capture d’écran 2026-08-17 à 16.37.02.png",
+		url: "/home/Fichier 3.jpg",
 		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		url: "/home/Capture d’écran 2026-08-17 à 16.37.58.png",
+		url: "/home/Fichier 2.jpg",
 		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		url: "/home/Capture d’écran 2026-08-17 à 16.45.33.png",
+		url: "/home/Fichier 1.jpg",
 		text: "Portrait d’un chien dans une lumière douce"
 	}
 ];
 
+export const videoCard = {
+	url: "/home/MONTAGE_FINAL_WEB.mp4",
+	text: "Vidéo d’un chien et maitresse en concours d'agility"
+};
+
 export const designCards = [
 	{
-		url: "/home/Capture d’écran 2026-08-17 à 16.36.32.png",
+		// url: "/home/Capture d’écran 2026-08-17 à 16.36.32.png",
 		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		url: "/home/Capture d’écran 2026-08-17 à 16.37.02.png",
+		url: "/home/Fichier 5.jpg",
 		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		url: "/home/Capture d’écran 2026-08-17 à 16.37.58.png",
+		// url: "/home/Capture d’écran 2026-08-17 à 16.37.58.png",
 		text: "Portrait d’un chien dans une lumière douce"
 	}
 ];

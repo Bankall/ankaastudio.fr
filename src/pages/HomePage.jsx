@@ -2,7 +2,8 @@ import { Seo } from "../components/Seo.jsx";
 import { SectionHeading } from "../components/SectionHeading.jsx";
 import { TestimonialCarousel } from "../components/TestimonialCarousel.jsx";
 import { InstagramFeed } from "../components/InstagramFeed.jsx";
-import { siteConfig, testimonials, photographyCards, designCards } from "../data/siteData.js";
+import { Video } from "../components/Video.jsx";
+import { siteConfig, testimonials, photographyCards, videoCard, designCards } from "../data/siteData.js";
 
 import logo from "../assets/media/logo-one-line.png";
 
@@ -32,8 +33,7 @@ export function HomePage() {
 					<div className='hero__panel'>
 						<div className='hero__content'>
 							<img src={logo} alt='Ankaa Studio' className='hero__logo' />
-							<h1 className='hero__title'>Photographie - Création graphique</h1>
-							<p className='hero__description eyebrow'>Spécialiste de l’univers canin</p>
+							<h1 className='hero__title'>Photo - Vidéo - Création graphique</h1>
 						</div>
 					</div>
 				</div>
@@ -44,7 +44,7 @@ export function HomePage() {
 					<SectionHeading
 						eyebrow='Photographie'
 						title='Raconter votre histoire… et celle de votre chien'
-						description='J’accorde une attention particulière au respect de l’animal, à son rythme, à ses émotions, pour créer des images justes et sincères. Spécialisée dans la photographie canine, ce qui me touche le plus, c’est de révéler ces liens invisibles, ces regards, ces instants parfois discrets mais profondément vrais. Chaque séance est différente, et je m’adapte à chacun - chien comme humain - pour que l’expérience soit douce, naturelle, et fidèle à ce que vous êtes. '
+						description='Lors d’une séance, je prends le temps d’observer votre chien, son caractère, son énergie et sa façon d’interagir avec vous. <b>L’idée est de créer des images naturelles, qui vous ressemblent</b>. Je travaille avec les particuliers pour des souvenirs simples et authentiques, mais aussi avec les professionnels du monde canin : élevages, éducateurs, clubs ou structures souhaitant valoriser leur activité. J’aime également photographier les disciplines sportives comme l’agility, le hoopers, le mantrailing ou le nosework. Des moments vivants, spontanés, où l’on retrouve toute l’énergie du chien et la relation avec son humain.'
 					/>
 
 					<div className='picture-grid'>
@@ -53,6 +53,20 @@ export function HomePage() {
 								<img src={valueCard.url} alt={valueCard.text} className='picture-card__image' loading='lazy' decoding='async' />
 							</article>
 						))}
+					</div>
+				</div>
+			</section>
+
+			<section className='section video'>
+				<div className='container'>
+					<SectionHeading
+						eyebrow='Video'
+						title='Donner du mouvement à vos souvenirs'
+						description='Je réalise des vidéos courtes pour garder une trace vivante de vos moments avec votre animal, que ce soit lors d’une séance photo, d’une activité canine ou d’un instant du quotidien. Je crée également des mini reportages autour des sports canins, comme l’agility, le hoopers, le mantrailing ou le nosework. L’objectif est de mettre en valeur une ambiance, une discipline, l’énergie du chien et la relation avec son humain. Des vidéos naturelles, dynamiques et faciles à partager, pensées pour conserver un souvenir précieux ou valoriser votre activité sur les réseaux sociaux.'
+					/>
+
+					<div className='video-container'>
+						<Video src={videoCard.url} alt={videoCard.text} className='picture-card__video' style={{ opacity: videoCard.url ? 1 : 0 }} />
 					</div>
 				</div>
 			</section>
@@ -69,7 +83,7 @@ Identité graphique, contenus pour les réseaux sociaux, supports imprimés… c
 					<div className='grid grid--3 design-grid'>
 						{designCards.map(designCard => (
 							<article className='picture-card' key={designCard.title}>
-								<img src={designCard.url} alt={designCard.text} className='picture-card__image' loading='lazy' decoding='async' />
+								<img src={designCard.url} alt={designCard.text} className='picture-card__image' loading='lazy' decoding='async' style={{ opacity: designCard.url ? 1 : 0 }} />
 							</article>
 						))}
 					</div>
