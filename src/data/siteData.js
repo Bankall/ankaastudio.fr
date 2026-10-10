@@ -102,7 +102,8 @@ Bailey a été très à l’aise avec Sophie, elle a su nous conseiller sur comm
 Nous qui étions partis sur le choix de 5 photos, nous sommes repartis avec la formule à 20 photos tellement il nous était impossible de nous décider pour choisir 😍
 Ce qui est sûr c’est que tous nos futurs moments de vie seront capturés par Sophie 🥰`,
 		name: "Sarah Lartillerie",
-		avatar: "/testimonials/sarah-lartillerie.jpg"
+		avatar: "/testimonials/sarah-lartillerie.jpg",
+		className: "big-testimonial"
 	}
 ];
 

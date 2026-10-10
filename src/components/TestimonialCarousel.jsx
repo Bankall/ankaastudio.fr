@@ -43,7 +43,7 @@ export function TestimonialCarousel({ testimonials }) {
 			}}>
 			{testimonials.map(testimonial => (
 				<SwiperSlide key={testimonial.name} className='testimonial-swiper__slide'>
-					<TestimonialCard testimonial={testimonial} onPrev={() => swiperRef.current?.slidePrev()} onNext={() => swiperRef.current?.slideNext()} />
+					<TestimonialCard className={testimonial.className} testimonial={testimonial} onPrev={() => swiperRef.current?.slidePrev()} onNext={() => swiperRef.current?.slideNext()} />
 				</SwiperSlide>
 			))}
 		</Swiper>
