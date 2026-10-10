@@ -93,6 +93,16 @@ export const testimonials = [
 		quote: "Super expérience avec Ankaa Studio. Elle met vite à l’aise et s’adapte vraiment bien au chien, ce qui rend la séance fluide et agréable. Les photos sont très réussies, avec une belle lumière et un vrai sens du détail. On sent qu’il y a du travail derrière ! Très contente du rendu, je recommande sans hésiter.",
 		name: "Marie Mylinh Lavolé",
 		avatar: "/testimonials/marie-mylinh-lavole.jpg"
+	},
+	{
+		quote: `J’ai rencontré Sophie lorsque l’on a partagé un événement canin. ☺️
+Lorsque nous avons eu notre petit Bailey (berger australien), nous avons voulu immortaliser ses premiers mois en photos. 🐻
+On s’est donc tournés vers elle pour la prise de photo avec sa première formule. La séance a été totalement magique alors qu’autant mon conjoint que moi ne sommes à l’aise avec la prise de photos.😅
+Bailey a été très à l’aise avec Sophie, elle a su nous conseiller sur comment se positionner dans un champs de tournesols sans que cela ne nous paraisse forcé et pas naturel pour nous, et le résultat est bluffant !
+Nous qui étions partis sur le choix de 5 photos, nous sommes repartis avec la formule à 20 photos tellement il nous était impossible de nous décider pour choisir 😍
+Ce qui est sûr c’est que tous nos futurs moments de vie seront capturés par Sophie 🥰`,
+		name: "Sarah Lartillerie",
+		avatar: "/testimonials/sarah-lartillerie.jpg"
 	}
 ];
 
