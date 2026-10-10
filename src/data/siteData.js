@@ -45,8 +45,10 @@ export const photographyCards = [
 	}
 ];
 
+// Served from the media bucket, not from public/: see infra/upload-video.sh for
+// how a new montage gets there.
 export const videoCard = {
-	url: "/home/MONTAGE_FINAL_WEB.mp4",
+	url: "/video/showreel.mp4",
 	text: "Vidéo d’un chien et maitresse en concours d'agility"
 };
 

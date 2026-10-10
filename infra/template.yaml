@@ -269,6 +269,18 @@ Resources:
                       Condition:
                           StringEquals:
                               AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
+                    # Also public: the marketing site's showreel. It lives here
+                    # rather than in the site bucket so that a video the size of a
+                    # whole site build stays out of git and out of every deploy —
+                    # ./upload-video.sh replaces it on its own schedule.
+                    - Effect: Allow
+                      Principal:
+                          Service: cloudfront.amazonaws.com
+                      Action: s3:GetObject
+                      Resource: !Sub "arn:aws:s3:::${MediaBucketName}/video/*"
+                      Condition:
+                          StringEquals:
+                              AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
 
     # -----------------------------------------------------------------------
     # Lambdas
@@ -650,6 +662,19 @@ Resources:
                       ViewerProtocolPolicy: redirect-to-https
                       AllowedMethods: [GET, HEAD, OPTIONS]
                       Compress: true
+                      CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+
+                    # The home page showreel: public too, so no TrustedKeyGroups.
+                    # Compression is off — an mp4 is already compressed, and the
+                    # <video> element needs the byte ranges S3 serves untouched.
+                    # CachingOptimized honours the day-long Cache-Control that
+                    # upload-video.sh sets, and that script invalidates the prefix
+                    # when it replaces the file.
+                    - PathPattern: /video/*
+                      TargetOriginId: media
+                      ViewerProtocolPolicy: redirect-to-https
+                      AllowedMethods: [GET, HEAD, OPTIONS]
+                      Compress: false
                       CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
 
     SiteHeadersPolicy:

@@ -20,6 +20,7 @@ what makes the whole thing work without CORS and with same-origin cookies:
 | `/api/*`     | Lambda Function URL (OAC) | public route, own auth                    |
 | `/gallery/*` | Lambda Function URL (OAC) | public — the SPA shell, per-gallery link preview tags injected |
 | `/media/*`   | media bucket (OAC)        | signed cookies (previews) / signed URLs (downloads) |
+| `/video/*`   | media bucket (OAC)        | public — the home page showreel           |
 
 The media bucket's policy only grants CloudFront `media/*`. `db/` (the JSON
 database) and `originals/` are off the CDN by construction, not by configuration —
@@ -190,8 +191,17 @@ changes, which matters because `ankaastudio.fr` currently points at OVH.
 
 ```bash
 ./infra/upload-watermark.sh ~/path/to/logo.png     # PNG with transparency
+./infra/upload-video.sh ~/path/to/montage.mp4      # H.264/AAC, web-sized
 npm run build && ./infra/sync-site.sh
 ```
+
+The showreel is a single mp4 at `video/showreel.mp4` in the media bucket, served
+public on `/video/*` and autoplayed by the home page. It sits outside the site
+build on purpose: the montage is larger than everything in `dist/` put together,
+so keeping it here spares git the weight and spares every deploy the re-upload.
+`src/data/siteData.js` hardcodes that one key, so a new montage overwrites the
+old — the script invalidates the path for you, but browsers hold their copy for
+up to a day.
 
 The watermark is a single PNG at `assets/watermark.png` in the media bucket. The
 processor stretches it across 90% of each derivative's width, centred, at 60%

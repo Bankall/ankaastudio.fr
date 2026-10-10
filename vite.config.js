@@ -57,7 +57,10 @@ export default defineConfig(({ mode }) => {
 				"/media": proxyTo(target),
 				// The Instagram feed is a static document in the media bucket, served
 				// on its own public /instagram/* behaviour; proxy it like the rest.
-				"/instagram": proxyTo(target)
+				"/instagram": proxyTo(target),
+				// Same story for the home page showreel: too large to ship in the
+				// site build, so it lives in the media bucket behind /video/*.
+				"/video": proxyTo(target)
 			}
 		},
 		build: {

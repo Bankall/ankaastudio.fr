@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Masters of anything served from the media bucket rather than the site build —
+# the home page showreel today. Too large for git; publish with
+# infra/upload-video.sh and keep the source file here.
+media
+
 # Lambda deploy artifacts / secrets
 lambda/**/.env.deploy
 lambda/**/function.zip
