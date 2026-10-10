@@ -31,6 +31,8 @@ import {
 	originalPrefix,
 	pendingPhoto,
 	photoWatermark,
+	PREVIEW_QUALITY_MODES,
+	previewQualityFor,
 	readyCover,
 	selectionKey,
 	selectionVisitors,
@@ -295,6 +297,10 @@ async function updateGallery({ request, params }) {
 		clientEmail: email(body.clientEmail, "email du client"),
 		status: oneOf(body.status, "statut", GALLERY_STATUSES),
 		watermark: oneOf(body.watermark, "filigrane", WATERMARK_MODES),
+		previewQuality: oneOf(body.previewQuality, "qualité des aperçus", PREVIEW_QUALITY_MODES),
+		// Not an instruction to the processor, unlike the two above: both preview files
+		// exist whatever this says, so it reaches every photo the moment it is saved.
+		fullResTiles: bool(body.fullResTiles, "vignettes pleine résolution"),
 		// The master switch alone. The photos in no set have their own pair below, and
 		// each set carries one too; see the set routes.
 		downloadsEnabled: bool(body.downloadsEnabled, "téléchargements")
@@ -579,7 +585,7 @@ async function processPhotos({ request, params }) {
 		// without touching the rest of the gallery.
 		const watermark = watermarkFor(gallery, targetSet);
 
-		await Promise.all(queued.map(item => invokeProcessor({ gid: gallery.id, ...item, watermark, rev: 1 })));
+		await Promise.all(queued.map(item => invokeProcessor({ gid: gallery.id, ...item, watermark, previewQuality: previewQualityFor(gallery), rev: 1 })));
 	}
 
 	return json(202, { queued: isArchived ? 0 : queued.length, archived: isArchived ? queued.length : 0 });
@@ -699,7 +705,7 @@ async function reconcile({ request, params }) {
 			gallery.photos.push(pendingPhoto(item, gallery.photos.length));
 			// Adopted ungrouped, so that is the mode it is derived with — the tab it was
 			// really uploaded into died with the browser that knew.
-			requeue.push({ ...item, originalName: "", rev: 1, watermark: watermarkFor(gallery, null) });
+			requeue.push({ ...item, originalName: "", rev: 1, watermark: watermarkFor(gallery, null), previewQuality: previewQualityFor(gallery) });
 			continue;
 		}
 
@@ -717,7 +723,8 @@ async function reconcile({ request, params }) {
 			extension: photo.extension ?? item.extension,
 			originalName: photo.originalName ?? "",
 			rev: photo.rev ?? 1,
-			watermark: photoWatermark(gallery, photo)
+			watermark: photoWatermark(gallery, photo),
+			previewQuality: previewQualityFor(gallery)
 		});
 	}
 
@@ -795,6 +802,7 @@ async function flushRestamp(gallery, { photos, stale }) {
 				extension: photo.extension,
 				originalName: photo.originalName,
 				watermark: photoWatermark(gallery, photo),
+				previewQuality: previewQualityFor(gallery),
 				rev: photo.rev
 			})
 		)
@@ -1121,6 +1129,9 @@ async function reprocess({ request, params }) {
 				// the photos already in it, which is the only way a mark comes off — or
 				// goes on — once it has been burnt into a derivative.
 				watermark: photoWatermark(gallery, photo),
+				// Gallery-wide, so every scope of this route agrees on it: re-deriving one
+				// tab at a time must not leave the gallery holding two compressions.
+				previewQuality: previewQualityFor(gallery),
 				rev: photo.rev
 			})
 		)

@@ -54,7 +54,7 @@ export const videoCard = {
 
 export const designCards = [
 	{
-		// url: "/home/Capture d’écran 2026-08-17 à 16.36.32.png",
+		url: "/home/Fichier 6.jpg",
 		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
@@ -62,7 +62,7 @@ export const designCards = [
 		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		// url: "/home/Capture d’écran 2026-08-17 à 16.37.58.png",
+		url: "/home/Fichier 7.png",
 		text: "Portrait d’un chien dans une lumière douce"
 	}
 ];
@@ -96,139 +96,21 @@ export const testimonials = [
 	}
 ];
 
-export const portfolioItems = [
-	{
-		id: "chiens-1",
-		category: "Chiens",
-		title: "Portrait en lumière naturelle",
-		description: "Une image douce et enveloppante pour révéler la présence du chien.",
-		image: "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=1200&q=80",
-		alt: "Portrait d’un chien au pelage clair dans une lumière naturelle"
-	},
-	{
-		id: "chiens-2",
-		category: "Chiens",
-		title: "Exploration et liberté",
-		description: "Un rendu dynamique pour des chiens actifs et expressifs.",
-		image: "https://images.unsplash.com/photo-1450778869180-41d0601e46b8?auto=format&fit=crop&w=1200&q=80",
-		alt: "Chien en mouvement dans un environnement extérieur"
-	},
-	{
-		id: "humains-1",
-		category: "Humains & chiens",
-		title: "Complicité en famille",
-		description: "Une scène intime et chaleureuse autour de la relation au quotidien.",
-		image: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=1200&q=80",
-		alt: "Famille accompagnée de son chien pendant une séance photo"
-	},
-	{
-		id: "humains-2",
-		category: "Humains & chiens",
-		title: "Couple et chien",
-		description: "Une direction artistique tendre pour les séances en duo.",
-		image: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=1200&q=80",
-		alt: "Couple avec son chien dans un cadre naturel"
-	},
-	{
-		id: "chiots-1",
-		category: "Chiots",
-		title: "Premiers mois",
-		description: "Une galerie délicate pour raconter les débuts de vie.",
-		image: "https://images.unsplash.com/photo-1517423440428-a5a00ad493e8?auto=format&fit=crop&w=1200&q=80",
-		alt: "Chiot curieux dans un décor doux"
-	},
-	{
-		id: "evenements-1",
-		category: "Événements",
-		title: "Reportage canin",
-		description: "Instants sur le vif, organisation d’événements et ambiance conviviale.",
-		image: "https://images.unsplash.com/photo-1450778869180-41d0601e46b8?auto=format&fit=crop&w=1200&q=80",
-		alt: "Reportage photo lors d’un événement canin en extérieur"
-	},
-	{
-		id: "evenements-2",
-		category: "Événements",
-		title: "Détails de rencontre",
-		description: "Un rendu éditorial pour valoriser l’énergie de l’événement.",
-		image: "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=80",
-		alt: "Scène d’événement avec chien au premier plan"
-	}
-];
-
-export const portfolioCategories = ["Toutes", "Chiens", "Humains & chiens", "Chiots", "Événements"];
-
 export const pricingPlans = [
 	{
-		slug: "seance-chien",
-		label: "Séance signature",
-		name: "Séance chien",
-		description: "Portraits artistiques pour capturer le caractère, les gestes et les expressions du chien.",
-		duration: "Durée moyenne : 1h",
-		photos: "8 photos retouchées incluses",
-		delivery: "Galerie privée en ligne",
-		price: "à partir de 180 €",
-		priceNote: "hors options",
+		slug: "seance-photo",
+		name: "Séance photo",
 		featured: true
 	},
 	{
-		slug: "seance-humain-chien",
-		label: "Complicité",
-		name: "Séance humain + chien",
-		description: "Une séance sensible pour raconter le lien entre vous et votre compagnon.",
-		duration: "Durée moyenne : 1h15",
-		photos: "10 photos retouchées incluses",
-		delivery: "Conseils tenues et préparation",
-		price: "à partir de 220 €",
-		priceNote: "hors déplacement",
-		featured: false
+		slug: "reportage-video",
+		name: "Reportage vidéo",
+		featured: true
 	},
 	{
-		slug: "seance-chiot",
-		label: "Débuts de vie",
-		name: "Séance chiot",
-		description: "Des images tendres et dynamiques pour immortaliser les premiers mois.",
-		duration: "Durée moyenne : 45 min",
-		photos: "6 photos retouchées incluses",
-		delivery: "Séance adaptée au rythme du chiot",
-		price: "à partir de 150 €",
-		priceNote: "hors options",
-		featured: false
-	},
-	{
-		slug: "anniversaire-canin",
-		label: "Événement joyeux",
-		name: "Anniversaire canin",
-		description: "Un reportage élégant pour célébrer une date importante avec style.",
-		duration: "Durée moyenne : 1h",
-		photos: "12 photos retouchées incluses",
-		delivery: "Prises de vue de l’ambiance et des détails",
-		price: "à partir de 240 €",
-		priceNote: "sur devis",
-		featured: false
-	},
-	{
-		slug: "reportage-evenementiel",
-		label: "Professionnels",
-		name: "Reportage événementiel",
-		description: "Pour vos rencontres, ateliers, journées portes ouvertes ou concours.",
-		duration: "Durée sur devis",
-		photos: "Sélection selon la couverture",
-		delivery: "Livraison rapide pour communication",
-		price: "sur devis",
-		priceNote: "",
-		featured: false
-	},
-	{
-		slug: "communication-visuelle",
-		label: "Marque et visibilité",
-		name: "Communication visuelle professionnelle",
-		description: "Photos de marque pour sites, réseaux sociaux, fiches et supports commerciaux.",
-		duration: "Durée sur devis",
-		photos: "Pack personnalisé",
-		delivery: "Direction artistique adaptée à votre image",
-		price: "sur devis",
-		priceNote: "",
-		featured: false
+		slug: "creation-graphique",
+		name: "Création graphique",
+		featured: true
 	},
 	{
 		slug: "other-services",

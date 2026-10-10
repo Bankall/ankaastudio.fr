@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { Image } from "../components/Image.jsx";
 import { DownloadIcon } from "./DownloadIcon.jsx";
 import { HeartIcon } from "./HeartIcon.jsx";
 
@@ -15,46 +16,17 @@ const PRELOAD_MARGIN = "300px 0px";
  * costs no request and the layout never jumps: the aspect ratio is known before
  * anything is fetched.
  *
- * The full image is only mounted once the tile intersects the viewport. Native
+ * The photo itself is an Image, which is what holds the request back until the
+ * tile is approached and the fade back until the pixels land. Native
  * `loading='lazy'` is kept as a second line of defence, but browsers apply it with
  * a very generous threshold — on a long gallery that still means dozens of signed
  * requests the client never sees.
  */
-export function PhotoTile({ photo, index, isFavourite, showFavourites, showDownload, onOpen, onToggleFavourite, onDownload }) {
+export function PhotoTile({ photo, index, isFavourite, showFavourites, showDownload, fullResTiles = false, onOpen, onToggleFavourite, onDownload }) {
 	const figureRef = useRef(null);
-	const imageRef = useRef(null);
-	// No observer (old browser, jsdom) means no lazy loading: show everything.
-	const [visible, setVisible] = useState(() => typeof IntersectionObserver === "undefined");
+	// The tile needs the reveal too, not just the photo: it is what cross-fades
+	// the placeholder out from behind it.
 	const [loaded, setLoaded] = useState(false);
-
-	useEffect(() => {
-		if (visible || !figureRef.current) {
-			return;
-		}
-
-		const observer = new IntersectionObserver(
-			entries => {
-				if (entries.some(entry => entry.isIntersecting)) {
-					// One-way switch: a photo scrolled back out stays loaded.
-					setVisible(true);
-					observer.disconnect();
-				}
-			},
-			{ rootMargin: PRELOAD_MARGIN }
-		);
-
-		observer.observe(figureRef.current);
-
-		return () => observer.disconnect();
-	}, [visible]);
-
-	// A cached image can finish decoding before React attaches onLoad, in which case
-	// the event never fires and the tile would stay transparent for good.
-	useEffect(() => {
-		if (visible && imageRef.current?.complete) {
-			setLoaded(true);
-		}
-	}, [visible]);
 
 	return (
 		<figure
@@ -68,25 +40,40 @@ export function PhotoTile({ photo, index, isFavourite, showFavourites, showDownl
 				{photo.lqip ?
 					<img className='photo-tile__placeholder' src={photo.lqip} alt='' aria-hidden='true' />
 				:	null}
-				{visible ?
-					<img
-						ref={imageRef}
-						className='photo-tile__image'
-						src={photo.thumb}
-						srcSet={`${photo.thumb} 600w, ${photo.web} 2048w`}
-						// Tracks the full-bleed column counts below, so the browser never
-						// picks the 2048px derivative for a tile a fifth of the screen wide.
-						sizes='(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1499px) 34vw, (max-width: 2099px) 25vw, 20vw'
-						alt={photo.caption || `Photo ${index + 1}`}
-						loading='lazy'
-						decoding='async'
-						// Right-click save is trivially bypassed, but the watermarked preview
-						// is the real protection; this only removes the obvious temptation.
-						onContextMenu={event => event.preventDefault()}
-						draggable={false}
-						onLoad={() => setLoaded(true)}
-					/>
-				:	null}
+				<Image
+					className='photo-tile__image'
+					src={fullResTiles ? photo.web : photo.thumb}
+					// Under fullResTiles the 2048px file is the whole point, so there is no
+					// set to choose from: offering the 600px one as a candidate would let the
+					// browser go back to it on the narrow screens where it is cheapest —
+					// which is exactly the gallery this setting is turned on for.
+					srcSet={fullResTiles ? undefined : `${photo.thumb} 600w, ${photo.web} 2048w`}
+					// Tracks the full-bleed column counts below, so the browser never
+					// picks the 2048px derivative for a tile a fifth of the screen wide.
+					sizes={fullResTiles ? undefined : "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1499px) 34vw, (max-width: 2099px) 25vw, 20vw"}
+					alt={photo.caption || `Photo ${index + 1}`}
+					loading='lazy'
+					decoding='async'
+					// Right-click save is trivially bypassed, but the watermarked preview
+					// is the real protection; this only removes the obvious temptation.
+					onContextMenu={event => event.preventDefault()}
+					draggable={false}
+					// The figure holds the tile's space while the photo is still unmounted,
+					// so it is what the approach is measured against.
+					frameRef={figureRef}
+					preloadMargin={PRELOAD_MARGIN}
+					// No scroll reveal and no stagger here: the placeholder underneath is
+					// cross-faded on a hand-tuned delay, which a random offset would pull
+					// apart, and the blur-up should be over before the visitor arrives
+					// rather than performed in front of them.
+					revealRatio={0}
+					stagger={0}
+					waitForLoad
+					// A signed URL that has expired leaves the blur in place rather than
+					// a row of broken-image marks across a client's gallery.
+					revealOnError={false}
+					onReveal={() => setLoaded(true)}
+				/>
 			</button>
 
 			{showFavourites || showDownload ?

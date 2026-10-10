@@ -1,109 +1,111 @@
-// import { useEffect, useMemo, useState } from "react";
-// import { Link } from "react-router-dom";
-// import { GalleryModal } from "../components/GalleryModal.jsx";
+import { useCallback, useEffect, useState } from "react";
 import { Seo } from "../components/Seo.jsx";
-import { SectionHeading } from "../components/SectionHeading.jsx";
-// import { portfolioCategories, portfolioItems, siteConfig } from "../data/siteData.js";
+import { Lightbox } from "../gallery/Lightbox.jsx";
+import { PhotoTile } from "../gallery/PhotoTile.jsx";
+import { siteConfig } from "../data/siteData.js";
+import { galleryApi } from "../utils/galleryApi.js";
 
-// const portfolioStructuredData = {
-// 	"@context": "https://schema.org",
-// 	"@type": "CollectionPage",
-// 	name: "Portfolio Ankaa Studio",
-// 	url: `${siteConfig.domain}/portfolio`,
-// 	description: "Portfolio de photographie canine, humaine et événementielle."
-// };
+// The portfolio is an ordinary gallery, curated in the admin like any shoot and
+// published under this slug without a password. This page is only the public way
+// through it, so the photographer changes what the site shows by changing the
+// gallery — nothing here needs touching.
+const PORTFOLIO_SLUG = "portfolio";
+// Nothing is offered for download on a public portfolio, and there is nobody to
+// file favourites under, so the lightbox is told so once.
+const DOWNLOADS_OFF = { enabled: false, hd: false, zip: false };
+// One identity across renders, so a gallery that is still loading does not hand
+// the grid a fresh array every time.
+const NO_PHOTOS = [];
+
+const portfolioStructuredData = {
+	"@context": "https://schema.org",
+	"@type": "CollectionPage",
+	name: "Portfolio Ankaa Studio",
+	url: `${siteConfig.domain}/portfolio`,
+	description: "Portfolio de photographie canine, humaine et événementielle."
+};
 
 export function PortfolioPage() {
-	// const [activeCategory, setActiveCategory] = useState("Toutes");
-	// const [selectedItem, setSelectedItem] = useState(null);
+	const [state, setState] = useState({ status: "loading" });
+	const [lightboxIndex, setLightboxIndex] = useState(null);
 
-	// const filteredItems = useMemo(() => {
-	// 	if (activeCategory === "Toutes") {
-	// 		return portfolioItems;
-	// 	}
+	useEffect(() => {
+		let cancelled = false;
 
-	// 	return portfolioItems.filter(item => item.category === activeCategory);
-	// }, [activeCategory]);
+		const load = async () => {
+			try {
+				const payload = await galleryApi.read(PORTFOLIO_SLUG);
 
-	// useEffect(() => {
-	// 	const onKeyDown = event => {
-	// 		if (event.key === "Escape") {
-	// 			setSelectedItem(null);
-	// 		}
-	// 	};
+				if (!cancelled) {
+					// Every photo of the gallery, sets and all: a portfolio is one
+					// sequence, not a set of tabs to pick through.
+					setState({ status: "ready", photos: payload.gallery?.photos ?? NO_PHOTOS, fullResTiles: Boolean(payload.gallery?.fullResTiles) });
+				}
+			} catch {
+				// A portfolio that cannot be read is a studio problem, not the
+				// visitor's: it says so plainly and the rest of the page stands.
+				if (!cancelled) {
+					setState({ status: "error" });
+				}
+			}
+		};
 
-	// 	window.addEventListener("keydown", onKeyDown);
+		load();
 
-	// 	return () => window.removeEventListener("keydown", onKeyDown);
-	// }, []);
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	const photos = state.status === "ready" ? state.photos : NO_PHOTOS;
+
+	const navigate = useCallback(
+		step => {
+			setLightboxIndex(current => {
+				if (current === null) {
+					return current;
+				}
+
+				return Math.min(photos.length - 1, Math.max(0, current + step));
+			});
+		},
+		[photos.length]
+	);
 
 	return (
 		<>
-			<Seo title='Portfolio | Ankaa Studio' description='Découvrez le portfolio d’Ankaa Studio: chiens, humains et chiens, chiots et événements en Marne et à Reims.' path='/portfolio' noIndex />
+			<Seo
+				title='Portfolio | Ankaa Studio'
+				description='Découvrez le portfolio d’Ankaa Studio: chiens, humains et chiens, chiots et événements en Marne et à Reims.'
+				path='/portfolio'
+				structuredData={portfolioStructuredData}
+				noIndex
+			/>
 
 			<section className='page-hero'>
 				<div className='container'>
-					<div className='page-hero__panel'>
-						{/* Contenu de la page en cours de préparation.
-						<h1 className='page-hero__title'>Une galerie par univers pour mieux projeter votre séance</h1>
-						<p className='page-hero__description'>
-							Le portfolio est organisé par catégories pour faciliter la lecture des prestations. Chaque image s’ouvre en plein écran pour apprécier les détails et l’atmosphère de la séance.
-						</p>
-						*/}
-					</div>
+					<div className='page-hero__panel'></div>
 				</div>
 			</section>
 
 			<section className='section'>
-				<div className='container page-stack'>
-					<SectionHeading level={1} eyebrow='En construction' title='Prochainement disponible' description='Cette page est en cours de préparation. Revenez très bientôt pour la découvrir.' />
-
-					{/* Contenu de la page en cours de préparation.
-					<SectionHeading eyebrow='Galerie' title='Chiens, humains & chiens, chiots et événements' description='Filtrez les images par catégorie et consultez les visuels comme un mini-showroom éditorial.' />
-
-					<div className='gallery-toolbar' aria-label='Filtres de portfolio'>
-						{portfolioCategories.map(category => (
-							<button key={category} type='button' className={`gallery-toolbar__button ${activeCategory === category ? "is-active" : ""}`} onClick={() => setActiveCategory(category)}>
-								{category}
-							</button>
+				{state.status === "loading" ?
+					<p className='gallery-view__status'>Chargement du portfolio…</p>
+				: state.status === "error" ?
+					<p className='gallery-view__status'>Le portfolio est momentanément indisponible. Réessayez dans un instant.</p>
+				: photos.length === 0 ?
+					<p className='gallery-view__status'>Les photos arrivent bientôt.</p>
+				:	<div className='photo-grid photo-grid--portfolio'>
+						{photos.map((photo, index) => (
+							<PhotoTile key={photo.pid} photo={photo} index={index} fullResTiles={Boolean(state.fullResTiles)} onOpen={setLightboxIndex} />
 						))}
 					</div>
-
-					<div className='gallery-grid'>
-						{filteredItems.map(item => (
-							<article key={item.id} className='gallery-card' onClick={() => setSelectedItem(item)} role='button' tabIndex={0} onKeyDown={event => event.key === "Enter" && setSelectedItem(item)}>
-								<div className='gallery-card__media'>
-									<img className='gallery-card__image' src={item.image} alt={item.alt} loading='lazy' decoding='async' />
-								</div>
-								<div className='gallery-card__meta'>
-									<span className='gallery-card__category'>{item.category}</span>
-									<h3 className='gallery-card__title'>{item.title}</h3>
-									<p className='gallery-card__text'>{item.description}</p>
-								</div>
-							</article>
-						))}
-					</div>
-
-					<div className='cta-banner'>
-						<div>
-							<p className='eyebrow'>Besoin d’un univers précis ?</p>
-							<h2 className='cta-banner__title'>Construisons un portfolio cohérent pour votre marque ou votre séance.</h2>
-						</div>
-						<p className='cta-banner__text'>Vous pouvez orienter la séance vers un rendu plus émotionnel, plus éditorial ou plus orienté communication professionnelle.</p>
-						<div className='hero__actions'>
-							<Link className='button' to='/contact'>
-								Réserver une séance
-							</Link>
-							<Link className='button-secondary' to='/tarifs'>
-								Voir les formules
-							</Link>
-						</div>
-					</div>
-					*/}
-				</div>
+				}
 			</section>
 
-			{/* <GalleryModal item={selectedItem} onClose={() => setSelectedItem(null)} /> */}
+			{lightboxIndex !== null && photos[lightboxIndex] ?
+				<Lightbox photos={photos} index={lightboxIndex} downloads={DOWNLOADS_OFF} onClose={() => setLightboxIndex(null)} onNavigate={navigate} />
+			:	null}
 		</>
 	);
 }

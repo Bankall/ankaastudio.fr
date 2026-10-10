@@ -533,6 +533,9 @@ export function GalleryPage() {
 								// Per photo, not per tab: the favourites view mixes sets, and each
 								// one decides for its own photos whether they may be saved.
 								showDownload={Boolean(downloadsByPid.get(photo.pid)?.enabled)}
+								// Gallery-wide, like the preview quality it goes with: the grid
+								// loads the 2048px file instead of the 600px thumbnail.
+								fullResTiles={Boolean(gallery.fullResTiles)}
 								onOpen={setLightboxIndex}
 								onToggleFavourite={toggleFavourite}
 								onDownload={downloadPhoto}

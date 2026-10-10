@@ -411,9 +411,13 @@ Resources:
             CodeUri: ../build/instagram-feed
             Handler: index.handler
             Description: Daily Instagram mirror — caches the latest posts into S3 for the home page.
-            # A handful of image downloads plus a token refresh; well under a minute.
+            # A handful of image downloads plus a token refresh; well under a
+            # minute. The memory is for sharp rather than for the downloads:
+            # Instagram's originals run to 13 megapixels, and Lambda scales CPU
+            # with memory, so the resize is quicker at 1 GB than it is cheap at
+            # half of it.
             Timeout: 60
-            MemorySize: 512
+            MemorySize: 1024
             Environment:
                 Variables:
                     MEDIA_BUCKET: !Ref MediaBucketName

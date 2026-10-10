@@ -29,6 +29,7 @@ import {
 	originalKey,
 	photoDownloads,
 	photoWatermark,
+	previewQualityFor,
 	readyCover,
 	selectionKey,
 	selectionOf,
@@ -138,6 +139,9 @@ async function cleanCoverReady(gallery) {
 			pid: cover.pid,
 			extension: cover.extension,
 			rev: cover.rev,
+			// The clean cover is a preview like any other, and the gallery's quality is
+			// what the photographs beside it were written at.
+			previewQuality: previewQualityFor(gallery),
 			variant: "cover"
 		});
 	} catch (error) {

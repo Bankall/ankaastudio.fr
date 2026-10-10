@@ -26,10 +26,6 @@
 	.section-heading__title {
 		color: var(--text-highlight);
 	}
-
-	img {
-		opacity: 0;
-	}
 }
 
 .design-grid {
@@ -443,7 +439,6 @@
 
 .picture-card {
 	box-shadow: 0 14px 32px rgba(74, 52, 31, 0.08);
-	background: #eee;
 }
 
 .picture-card__image {
@@ -452,19 +447,76 @@
 	aspect-ratio: 1 / 1;
 }
 
-/* The video and its sound toggle, pinned over the bottom-right corner. */
+/* The video and its sound toggle, pinned over the bottom-right corner. The
+   frame clips, so the video can wait below it and rise into view when the page
+   scrolls down to it. That leaves the frame holding the shadow — a shadow on
+   the clipped child would be cut away along with the overflow — so the shadow
+   has to be timed to the reveal rather than simply drawn. */
 .video-player {
+	/* How long the video takes to rise into the frame. Named because the shadow
+	   below has to wait exactly that long, and a second hardcoded 0.5s somewhere
+	   else is a number waiting to drift. */
+	--reveal-duration: 0.6s;
+
 	position: relative;
+	overflow: hidden;
 
 	max-height: 100vh;
 	max-width: 100vw;
 
-	box-shadow: 0px 0 1rem 0.4rem #0002;
+	box-shadow: 0 0 0 0 transparent;
 
 	video {
 		width: 100%;
 		height: 100%;
 		object-fit: contain;
+	}
+}
+
+/* Parked below the frame, and transparent with it: clipping alone would leave
+   the video to show through anything that scrolls over the frame, and the fade
+   is what keeps the entrance from reading as a bare slide. Video.jsx puts one
+   of the two classes below on the frame when the scroll arrives, and never
+   takes it off. */
+.video-player__container {
+	opacity: 0;
+	transform: translateY(100%);
+}
+
+/* Arrived, either way it was met: in place, opaque, and the frame casting its
+   shadow. Only the transitions below tell the two apart — a visitor coming up
+   the page is already looking at the frame, so for them there is no entrance
+   left to make and these are the styles the player simply starts with. */
+.video-player--popped .video-player__container,
+.video-player--shown .video-player__container {
+	opacity: 1;
+	transform: translateY(0);
+}
+
+.video-player--popped,
+.video-player--shown {
+	box-shadow: 0px 0 1rem 0.8rem #0002;
+}
+
+/* Met on the way down the page: the video climbs into the frame. */
+.video-player--popped .video-player__container {
+	transition:
+		transform var(--reveal-duration) ease-in-out,
+		opacity var(--reveal-duration) ease-in-out;
+}
+
+/* And the shadow follows, once the climb is over — a shadow drawn around a
+   frame with nothing in it yet reads as a hole cut in the page, so it sits out
+   the whole arrival first. */
+.video-player--popped {
+	transition: box-shadow var(--reveal-duration) ease var(--reveal-duration);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.video-player--popped,
+	.video-player--popped .video-player__container {
+		transition-duration: 1ms;
+		transition-delay: 0s;
 	}
 }
 

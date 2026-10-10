@@ -190,8 +190,6 @@ export function ContactPage() {
 									<li>
 										<a href={`mailto:${siteConfig.contactEmail}`}>{siteConfig.contactEmail}</a>
 									</li>
-									<li>{siteConfig.regionLabel}</li>
-									<li>{siteConfig.message}</li>
 								</ul>
 							</article>
 

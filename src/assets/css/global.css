@@ -83,6 +83,31 @@ canvas {
 	max-width: 100%;
 }
 
+/* Every picture on the site — marketing pages, galleries, covers — goes through
+   Image.jsx, which holds it invisible until it is worth looking at and then adds
+   the --revealed class. Whatever sits behind a picture is what a visitor sees in
+   the meantime: a tinted card on the marketing pages, a blur-up placeholder in
+   the galleries.
+
+   The delay is rolled per picture by Image.jsx, so a grid row reaching the fold
+   together does not fade up as one slab. A picture with the stagger switched off
+   never gets the property and falls back to no delay at all. */
+.image {
+	opacity: 0;
+	transition: opacity 600ms ease var(--image-fade-delay, 0ms);
+}
+
+.image--revealed {
+	opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.image {
+		transition-duration: 1ms;
+		transition-delay: 0s;
+	}
+}
+
 a {
 	color: inherit;
 	text-decoration: none;

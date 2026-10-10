@@ -132,9 +132,10 @@
 	transition: opacity 320ms ease-out 360ms;
 }
 
+/* Hidden and revealed by the shared .image rules; what is tuned here is only how
+   long this particular fade takes. */
 .gallery-cover__image {
 	position: relative;
-	opacity: 0;
 	transition: opacity 520ms ease-out;
 	-webkit-user-select: none;
 	user-select: none;
@@ -142,10 +143,6 @@
 
 .gallery-cover.is-loaded .gallery-cover__placeholder {
 	opacity: 0;
-}
-
-.gallery-cover.is-loaded .gallery-cover__image {
-	opacity: 1;
 }
 
 /* Type sits on an unknown photograph, so it carries its own contrast rather than
@@ -388,13 +385,30 @@
 	}
 }
 
+/* The site's own portfolio reuses the grid inside the marketing container, so it
+   carries the gutter the full-bleed .gallery-view would otherwise provide — and a
+   slightly wider one, in line with the spacing of the pages around it. */
+.photo-grid--portfolio {
+	--gallery-gutter: 0.9rem;
+	margin-top: 2.8rem;
+}
+
+/* Three columns at every width: bounded by the container rather than the screen,
+   a fourth column would leave each photograph too small to read as portfolio
+   work. The narrow-screen rules further down still take it to two and then one. */
+@media (min-width: 1500px) {
+	.photo-grid--portfolio {
+		column-count: 3;
+	}
+}
+
 .photo-tile {
 	position: relative;
 	/* Same gutter vertically as the columns use horizontally, so the grid reads as
 	   evenly spaced rather than as rows. */
 	margin: 0 0 var(--gallery-gutter, 0.9rem);
 	break-inside: avoid;
-	border-radius: var(--radius-sm);
+	/* border-radius: var(--radius-sm); */
 	overflow: hidden;
 }
 
@@ -424,9 +438,10 @@
 	transition: opacity 240ms ease-out 320ms;
 }
 
+/* Hidden and revealed by the shared .image rules; what is tuned here is the pace
+   of this fade and the fraction of a scale it settles out of. */
 .photo-tile__image {
 	position: relative;
-	opacity: 0;
 	transform: scale(1.012);
 	transition:
 		opacity 420ms ease-out,
@@ -440,7 +455,6 @@
 }
 
 .photo-tile.is-loaded .photo-tile__image {
-	opacity: 1;
 	transform: none;
 }
 

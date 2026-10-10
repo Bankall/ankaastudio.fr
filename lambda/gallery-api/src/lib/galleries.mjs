@@ -47,6 +47,16 @@ export const WATERMARK_KEY = "assets/watermark.png";
 export const WATERMARK_MODES = ["preview", "all", "none"];
 export const GALLERY_STATUSES = ["draft", "published", "archived"];
 
+// How hard the previews are compressed. An instruction to the processor, like the
+// watermark and with the same consequence: it is baked into the derivatives, so
+// changing it reaches only the photos derived afterwards. The widths do not move —
+// a photo is 600px and 2048px whatever the mode — this is the WebP quality those
+// two are written at, which is the one axis that trades bytes for detail without
+// touching a `sizes` attribute anywhere. Gallery-wide rather than per set: it is a
+// property of how the whole thing is published (a portfolio asks for more than a
+// set of proofs), not of one tab.
+export const PREVIEW_QUALITY_MODES = ["standard", "high", "max"];
+
 // Sets are named groups of photos inside a gallery, shown to the client as tabs,
 // each with its own download switches. They are optional: a photo that belongs to no
 // set is served under the gallery's `ungrouped` pair, which is a set's pair in all but
@@ -83,6 +93,11 @@ export function newGallery({ id, slug, title, clientName = "", clientEmail = "",
 		// null password = anyone holding the link gets in.
 		password: null,
 		watermark: "preview",
+		previewQuality: "standard",
+		// Whether the grid loads the 2048px preview instead of the 600px thumbnail.
+		// Costs bandwidth rather than storage — both files are written either way —
+		// so unlike previewQuality it takes effect without re-deriving anything.
+		fullResTiles: false,
 		// The master switch: nothing below it can offer a download it refuses.
 		downloadsEnabled: true,
 		// The settings the photos in no set get. Their own, not the master's; see
@@ -310,6 +325,15 @@ export const watermarkFor = (gallery, set) => (set ?? ungroupedSettings(gallery)
 export const photoWatermark = (gallery, photo) => watermarkFor(gallery, setOf(gallery, photo));
 
 /**
+ * The compression the processor must be given for this gallery's previews.
+ *
+ * Read at derive time only, for the same reason watermarkFor() is: the answer for a
+ * photo already on disk is whatever its sidecar recorded. Records written before the
+ * setting existed have none, and "standard" is exactly what they were derived at.
+ */
+export const previewQualityFor = gallery => gallery.previewQuality ?? "standard";
+
+/**
  * Which file a client's high-definition download actually is.
  *
  * `"original"` — the upload itself, byte for byte, which is the only honest answer for
@@ -413,6 +437,11 @@ export function clientProjection(gallery, { cleanCover = false } = {}) {
 		// The gallery's own answer: what an ungrouped photo is served under, and the
 		// only one a gallery with no sets ever needs.
 		downloads: downloadsFor(gallery, null),
+		// Which of the two previews the grid should load. Sent as a gallery-wide flag
+		// rather than resolved into the paths, because the tile needs both files to
+		// build an honest srcSet — the same URL offered as 600w and 2048w would have
+		// the browser choosing between a file and itself.
+		fullResTiles: Boolean(gallery.fullResTiles),
 		// Always at least one entry, so the client renders tabs when there are several
 		// and nothing at all when there is one.
 		sets: groups.map(group => ({

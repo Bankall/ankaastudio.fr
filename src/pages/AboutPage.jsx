@@ -1,5 +1,6 @@
 import { Seo } from "../components/Seo.jsx";
 import { SectionHeading } from "../components/SectionHeading.jsx";
+import { Image } from "../components/Image.jsx";
 
 export function AboutPage() {
 	return (
@@ -35,13 +36,13 @@ export function AboutPage() {
 
 					<div className='grid grid--3 mt-2 mb-2'>
 						<article className='picture-card'>
-							<img alt='Portrait de Sophie avec Sankaa' className='picture-card__image' loading='lazy' decoding='async' src='/about/sankaa_sophie.min.jpg' />
+							<Image alt='Portrait de Sophie avec Sankaa' className='picture-card__image' loading='lazy' decoding='async' src='/about/sankaa_sophie.min.jpg' />
 						</article>
 						<article className='picture-card'>
-							<img alt='Portrait de Hysis' className='picture-card__image' loading='lazy' decoding='async' src='/about/hysis.min.jpg' />
+							<Image alt='Portrait de Hysis' className='picture-card__image' loading='lazy' decoding='async' src='/about/hysis.min.jpg' />
 						</article>
 						<article className='picture-card'>
-							<img alt='Portrait de Bulma avec Sophie' className='picture-card__image' loading='lazy' decoding='async' src='/about/bulma_sophie.min.jpg' />
+							<Image alt='Portrait de Bulma avec Sophie' className='picture-card__image' loading='lazy' decoding='async' src='/about/bulma_sophie.min.jpg' />
 						</article>
 					</div>
 
@@ -52,7 +53,7 @@ export function AboutPage() {
 							davantage les chiens, leurs expressions, leur personnalité et tous ces petits moments qui rendent le lien avec eux si particulier.
 						</p>
 						<p>Puis est arrivée Bulma, ma petite dernière, une jeune Berger Australien pleine de vie, qui apporte une nouvelle énergie à notre quotidien.</p>
-						<p>Et enfin, il y a Hysis, ma chatte, qui partage ma vie depuis maintenant 14 ans et qui m’accompagne depuis bien avant la naissance d’Ankaa Studio.</p>
+						<p>Et enfin, il y a Hysis, ma bébé chat, qui partage ma vie depuis maintenant 14 ans et qui m’accompagne depuis bien avant la naissance d’Ankaa Studio.</p>
 						<p>
 							Trois personnalités très différentes, mais une même place immense dans ma vie. Elles sont aussi, chacune à leur manière, une partie de l’histoire et de la sensibilité que je mets aujourd’hui
 							dans Ankaa Studio.

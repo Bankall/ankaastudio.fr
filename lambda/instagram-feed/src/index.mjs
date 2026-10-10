@@ -12,9 +12,14 @@
 
 import { GetParametersCommand, PutParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import sharp from "sharp";
 
 const ssm = new SSMClient({});
 const s3 = new S3Client({});
+
+// sharp is CPU-bound and Lambda gives us the whole container; let libvips use it.
+sharp.concurrency(0);
+sharp.cache({ files: 0 });
 
 const BUCKET = process.env.MEDIA_BUCKET;
 const SSM_PREFIX = process.env.SSM_PREFIX || "/ankaa/instagram";
@@ -31,6 +36,18 @@ const USER_ID_NAME = `${SSM_PREFIX}/user-id`;
 // same day the schedule next runs.
 const IMAGE_CACHE_CONTROL = "public,max-age=31536000,immutable";
 const FEED_CACHE_CONTROL = "public,max-age=3600";
+
+// Instagram hands over the full-resolution original — up to 3277x4096 and 1.7 MB
+// — for a card the home page never draws wider than ~190px. Mirroring that
+// verbatim cost the strip about 3.4 MB, but the bytes were the lesser half of it:
+// the originals are progressive JPEGs, and decoding 13 megapixels to fill a
+// thumbnail is slow enough that the row visibly arrived one picture at a time,
+// however the fade was timed.
+//
+// 640px covers that card on a 3x screen with room to spare, and WebP is what the
+// galleries already serve.
+const IMAGE_WIDTH = 640;
+const IMAGE_QUALITY = 80;
 
 async function loadConfig() {
 	const result = await ssm.send(new GetParametersCommand({ Names: [TOKEN_NAME, USER_ID_NAME], WithDecryption: true }));
@@ -81,10 +98,14 @@ async function objectExists(key) {
 	}
 }
 
-// Copies a post's image into S3 once, skipping the download if it is already
-// there. Videos have no still of their own, so their thumbnail stands in.
+// Copies a post's image into S3 once, resized for the home page, skipping the
+// download if it is already there. Videos have no still of their own, so their
+// thumbnail stands in.
 async function mirrorImage(post) {
-	const key = `instagram/media/${post.id}.jpg`;
+	// The extension is part of the key, so moving to WebP is also what re-derives
+	// the posts mirrored before it. On the old key the existence check below would
+	// have kept the full-size JPEGs in place forever.
+	const key = `instagram/media/${post.id}.webp`;
 
 	if (await objectExists(key)) {
 		return `/${key}`;
@@ -100,14 +121,23 @@ async function mirrorImage(post) {
 		throw new Error(`Image download failed (${response.status}) for ${post.id}`);
 	}
 
-	const bytes = Buffer.from(await response.arrayBuffer());
+	const original = Buffer.from(await response.arrayBuffer());
+
+	// failOn 'truncated' so a download cut short is thrown rather than mirrored as
+	// a half-grey card that then caches for a year. rotate() bakes in any EXIF
+	// orientation, since the derivative carries no metadata of its own.
+	const image = await sharp(original, { failOn: "truncated" })
+		.rotate()
+		.resize({ width: IMAGE_WIDTH, fit: "inside", withoutEnlargement: true })
+		.webp({ quality: IMAGE_QUALITY, effort: 4 })
+		.toBuffer();
 
 	await s3.send(
 		new PutObjectCommand({
 			Bucket: BUCKET,
 			Key: key,
-			Body: bytes,
-			ContentType: response.headers.get("content-type") || "image/jpeg",
+			Body: image,
+			ContentType: "image/webp",
 			CacheControl: IMAGE_CACHE_CONTROL
 		})
 	);

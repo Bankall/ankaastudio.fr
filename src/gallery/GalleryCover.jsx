@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { Image } from "../components/Image.jsx";
 
 /**
  * The opening image of a gallery: the shoot's own cover photograph filling the
@@ -14,16 +15,9 @@ import { useEffect, useRef, useState } from "react";
  * section then falls back to type on the page's own dark ground.
  */
 export function GalleryCover({ photo, src, eyebrow, title, meta, notice, photosId }) {
-	const imageRef = useRef(null);
+	// The header needs the reveal too, not just the photo: it is what cross-fades
+	// the LQIP out from behind it.
 	const [loaded, setLoaded] = useState(false);
-
-	// A cached cover can finish decoding before React attaches onLoad, in which case
-	// the event never fires and the full image would stay hidden behind its LQIP.
-	useEffect(() => {
-		if (imageRef.current?.complete) {
-			setLoaded(true);
-		}
-	}, []);
 
 	return (
 		<header className={`gallery-cover${photo ? "" : " gallery-cover--bare"}${loaded ? " is-loaded" : ""}`}>
@@ -32,8 +26,7 @@ export function GalleryCover({ photo, src, eyebrow, title, meta, notice, photosI
 					{photo.lqip ?
 						<img className='gallery-cover__placeholder' src={photo.lqip} alt='' />
 					:	null}
-					<img
-						ref={imageRef}
+					<Image
 						className='gallery-cover__image'
 						src={src ?? photo.web}
 						alt=''
@@ -41,7 +34,17 @@ export function GalleryCover({ photo, src, eyebrow, title, meta, notice, photosI
 						decoding='async'
 						onContextMenu={event => event.preventDefault()}
 						draggable={false}
-						onLoad={() => setLoaded(true)}
+						// No approach gate and no stagger: this is the one photo worth
+						// fetching eagerly, it is alone on screen with nothing to fall out
+						// of step with, and it waits only for its own pixels so the title
+						// never lands on a bare background.
+						revealRatio={0}
+						stagger={0}
+						waitForLoad
+						// An expired signed URL leaves the LQIP holding the frame, so the
+						// title still has its backdrop.
+						revealOnError={false}
+						onReveal={() => setLoaded(true)}
 					/>
 				</div>
 			:	null}

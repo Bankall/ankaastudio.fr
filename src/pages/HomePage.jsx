@@ -2,6 +2,7 @@ import { Seo } from "../components/Seo.jsx";
 import { SectionHeading } from "../components/SectionHeading.jsx";
 import { TestimonialCarousel } from "../components/TestimonialCarousel.jsx";
 import { InstagramFeed } from "../components/InstagramFeed.jsx";
+import { Image } from "../components/Image.jsx";
 import { Video } from "../components/Video.jsx";
 import { siteConfig, testimonials, photographyCards, videoCard, designCards } from "../data/siteData.js";
 
@@ -15,7 +16,7 @@ const homeStructuredData = {
 	areaServed: ["Reims", "Marne"],
 	url: siteConfig.domain,
 	description: siteConfig.message,
-	serviceType: "Photographie canine"
+	serviceType: "Photographie canin"
 };
 
 export function HomePage() {
@@ -32,7 +33,7 @@ export function HomePage() {
 				<div className='container'>
 					<div className='hero__panel'>
 						<div className='hero__content'>
-							<img src={logo} alt='Ankaa Studio' className='hero__logo' />
+							<Image src={logo} alt='Ankaa Studio' className='hero__logo' />
 							<h1 className='hero__title'>Photo - Vidéo - Création graphique</h1>
 						</div>
 					</div>
@@ -48,9 +49,9 @@ export function HomePage() {
 					/>
 
 					<div className='picture-grid'>
-						{photographyCards.map(valueCard => (
-							<article className='picture-card' key={valueCard.title}>
-								<img src={valueCard.url} alt={valueCard.text} className='picture-card__image' loading='lazy' decoding='async' />
+						{photographyCards.map((valueCard, index) => (
+							<article className='picture-card' key={`photography-card-${index}`}>
+								<Image src={valueCard.url} alt={valueCard.text} className='picture-card__image' loading='lazy' decoding='async' />
 							</article>
 						))}
 					</div>
@@ -81,9 +82,16 @@ Identité graphique, contenus pour les réseaux sociaux, supports imprimés… c
 					/>
 
 					<div className='grid grid--3 design-grid'>
-						{designCards.map(designCard => (
-							<article className='picture-card' key={designCard.title}>
-								<img src={designCard.url} alt={designCard.text} className='picture-card__image' loading='lazy' decoding='async' style={{ opacity: designCard.url ? 1 : 0 }} />
+						{designCards.map((designCard, index) => (
+							<article className='picture-card' key={`design-card-${index}`}>
+								{/* Cards whose picture is not chosen yet hold their place in the
+								    grid as an empty frame. It takes the image class for its
+								    aspect ratio, so the row keeps its height — and it is a plain
+								    div rather than a hidden <img>, which would otherwise be an
+								    image element pointed at nothing. */}
+								{designCard.url ?
+									<Image src={designCard.url} alt={designCard.text} className='picture-card__image' loading='lazy' decoding='async' />
+								:	<div className='picture-card__image' />}
 							</article>
 						))}
 					</div>

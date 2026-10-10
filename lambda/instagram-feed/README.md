@@ -3,6 +3,21 @@
 Mirrors the studio's latest Instagram posts into S3 once a day so the home page
 can show them **without the browser ever touching Meta's API**.
 
+## Why resize
+
+Instagram's `media_url` is the full-resolution original — up to 3277×4096 and
+1.7 MB — and the home page draws it in a card about 190px wide. Mirroring it
+verbatim made the six-card strip ~3.4 MB, and because the originals are
+progressive JPEGs the decode cost was worse than the download: the row arrived
+one picture at a time no matter how the fade was timed. 640px WebP is ~10×
+smaller and ~26× cheaper to decode.
+
+The derivative's extension is part of its key, so the move from `.jpg` to
+`.webp` is also what re-derives the posts that were already mirrored — the
+existence check would otherwise keep the originals forever. The old
+`instagram/media/*.jpg` objects are left behind unreferenced once the feed is
+rewritten, and can be deleted at leisure.
+
 ## Why a mirror instead of a client-side embed
 
 Instagram's old anonymous/public endpoints are gone, and its Basic Display API
@@ -15,8 +30,9 @@ So this Lambda runs on a daily schedule (EventBridge, `rate(1 day)`):
 
 1. Reads the access token + Instagram user id from SSM.
 2. `GET /{user-id}/media` for the latest posts.
-3. Downloads each post's image and stores it at `instagram/media/{id}.jpg` in the
-   **media bucket** (immutable — keyed by the post id).
+3. Downloads each post's image, resizes it to 640px wide WebP and stores it at
+   `instagram/media/{id}.webp` in the **media bucket** (immutable — keyed by the
+   post id).
 4. Writes `instagram/feed.json` (the list the site reads).
 5. Refreshes the 60-day long-lived token and writes it back to SSM.
 
@@ -38,7 +54,7 @@ the site is safe to deploy before any of the setup below is done.
 			"caption": "…",
 			"mediaType": "IMAGE",
 			"timestamp": "2026-08-20T09:12:00+0000",
-			"image": "/instagram/media/17900000000000000.jpg"
+			"image": "/instagram/media/17900000000000000.webp"
 		}
 	]
 }

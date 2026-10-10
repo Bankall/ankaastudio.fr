@@ -47,6 +47,21 @@ const WATERMARK_WIDTH_RATIO = 0.9;
 // re-tuned here without re-exporting artwork.
 const WATERMARK_OPACITY = 0.6;
 
+// What each preview quality mode is worth in WebP quality, for the thumbnail and the
+// web preview respectively. Only the compression moves: the widths above are what the
+// gallery's `sizes` attributes are written against, so a mode that changed them would
+// have the browser picking derivatives against stale hints.
+//
+// "standard" is what every photo derived before the setting existed was written at, so
+// it has to stay exactly 72/80 — it is also the answer for a payload that carries no
+// mode at all. Above it the curve is deliberately shallow: WebP past ~q95 buys almost
+// no visible detail for a great deal of weight.
+const PREVIEW_QUALITY = {
+	standard: { thumb: 72, web: 80 },
+	high: { thumb: 80, web: 88 },
+	max: { thumb: 86, web: 95 }
+};
+
 const ALLOWED_FORMATS = new Set(["jpeg", "jpg", "png", "webp", "tiff", "heif", "avif"]);
 
 // sharp is CPU-bound and Lambda gives us the whole container; let libvips use it.
@@ -242,7 +257,10 @@ async function writeSidecar(gid, pid, sidecar) {
 // --- handler ---------------------------------------------------------------
 
 export const handler = async event => {
-	const { gid, pid, extension, originalName = "", watermark = "preview", rev = 1, variant = "full" } = event ?? {};
+	const { gid, pid, extension, originalName = "", watermark = "preview", previewQuality = "standard", rev = 1, variant = "full" } = event ?? {};
+	// An unknown mode is a caller that has outrun this function — a deploy in flight —
+	// and the old default is a better answer than a crash in front of an upload.
+	const quality = PREVIEW_QUALITY[previewQuality] ?? PREVIEW_QUALITY.standard;
 
 	if (!gid || !pid || !extension) {
 		throw new Error("Payload must include gid, pid and extension.");
@@ -278,10 +296,14 @@ export const handler = async event => {
 		// It is a job of its own because only the API knows which photo is the
 		// cover, and that can change long after the photo was derived.
 		if (variant === "cover") {
+			// Written at the web preview's quality rather than a fixed one: the cover is
+			// the largest image the gallery ever shows, and a hero visibly softer than
+			// the photographs under it is the first thing a photographer would notice
+			// after turning the quality up.
 			const cover = await base
 				.clone()
 				.resize({ width: WEB_WIDTH, fit: "inside", withoutEnlargement: true })
-				.webp({ quality: 82, effort: 4 })
+				.webp({ quality: quality.web, effort: 4 })
 				.toBuffer();
 
 			await putDerivative(`media/g/${gid}/v/c/${pid}_${rev}.webp`, cover, "image/webp");
@@ -327,7 +349,7 @@ export const handler = async event => {
 			return pipeline.webp({ quality, effort: 4 }).toBuffer();
 		}
 
-		const [thumb, web] = await Promise.all([derivePreview(THUMB_WIDTH, 72), derivePreview(WEB_WIDTH, 80)]);
+		const [thumb, web] = await Promise.all([derivePreview(THUMB_WIDTH, quality.thumb), derivePreview(WEB_WIDTH, quality.web)]);
 
 		// Under `watermark: "all"` the mark has to be *in* the file the client keeps,
 		// so that file cannot be their upload and has to be derived: a full-size JPEG,
@@ -391,6 +413,10 @@ export const handler = async event => {
 			lqip: `data:image/webp;base64,${lqipBuffer.toString("base64")}`,
 			takenAt: shotDate(metadata),
 			watermark,
+			// Recorded for the same reason `watermark` is: this is the compression the
+			// files on S3 were actually written at, which a setting changed since then
+			// reaches only through a re-derive.
+			previewQuality,
 			caption: null,
 			processedAt: new Date().toISOString()
 		});

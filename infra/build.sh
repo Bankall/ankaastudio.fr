@@ -4,9 +4,9 @@
 # `aws cloudformation package`.
 #
 # gallery-api and gallery-zipper bundle to a single file — pure JS, so a small
-# bundle and a fast cold start. gallery-processor keeps sharp external and
-# installs the linux/arm64 prebuilt binary next to it, because a native addon
-# cannot be bundled.
+# bundle and a fast cold start. gallery-processor and instagram-feed both resize
+# images, so they keep sharp external and install the linux/arm64 prebuilt binary
+# next to the bundle, because a native addon cannot be bundled.
 #
 # Usage: ./build.sh [api|processor|zipper]
 
@@ -69,21 +69,17 @@ build_zipper() {
 	bundle gallery-zipper
 }
 
-build_instagram() {
-	bundle instagram-feed
-}
+# Drops the sharp prebuilt next to a bundle that kept it external.
+install_sharp() {
+	local out="$1"
 
-build_processor() {
-	bundle gallery-processor --external:sharp
-
-	local out="$BUILD_DIR/gallery-processor"
 	echo "  → installing sharp for linux/arm64 ..."
 	# Lambda is arm64 (Graviton) and glibc-based. Without these flags npm would
 	# fetch the binary for *this* machine, which then fails at runtime.
 	(
 		cd "$out"
 		cat >package.json <<-'JSON'
-			{ "name": "ankaa-gallery-processor-runtime", "private": true, "type": "commonjs", "dependencies": { "sharp": "^0.35.3" } }
+			{ "name": "ankaa-lambda-runtime", "private": true, "type": "commonjs", "dependencies": { "sharp": "^0.35.3" } }
 		JSON
 		npm install --silent --no-audit --no-fund \
 			--cpu=arm64 --os=linux --libc=glibc \
@@ -92,6 +88,16 @@ build_processor() {
 	# Keep the file: sharp resolves through it, and its "type": "commonjs" is what
 	# keeps the bundle above loadable.
 	echo "  ✓ sharp installed ($(du -sh "$out/node_modules" | cut -f1))"
+}
+
+build_instagram() {
+	bundle instagram-feed --external:sharp
+	install_sharp "$BUILD_DIR/instagram-feed"
+}
+
+build_processor() {
+	bundle gallery-processor --external:sharp
+	install_sharp "$BUILD_DIR/gallery-processor"
 }
 
 case "${1:-all}" in

@@ -14,7 +14,7 @@ export function SiteFooter() {
 								<span className='brand__name'>Ankaa Studio</span>
 							</span>
 						</Link>
-						<p className='site-footer__text'>Photographe canine basée dans la Marne, au service des chiens, des familles, des couples et des professionnels du monde canin.</p>
+						<p className='site-footer__text'>Photographe canin basée dans la Marne, au service des chiens, des familles, des couples et des professionnels du monde canin.</p>
 					</div>
 
 					<div>

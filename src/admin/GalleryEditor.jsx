@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { adminApi } from "../utils/galleryApi.js";
-import { WATERMARK_LABELS, tabOf, watermarkFor } from "../utils/gallerySets.js";
+import { PREVIEW_QUALITY_LABELS, WATERMARK_LABELS, tabOf, watermarkFor } from "../utils/gallerySets.js";
 import { AdminPhotoGrid } from "./AdminPhotoGrid.jsx";
 import { SetsPanel } from "./SetsPanel.jsx";
 import { SharePanel } from "./SharePanel.jsx";
@@ -283,7 +283,7 @@ export function GalleryEditor() {
 	};
 
 	const handleReprocess = async () => {
-		if (!window.confirm("Régénérer tous les aperçus avec les réglages actuels de filigrane ? Les archives ZIP en cache seront supprimées.")) {
+		if (!window.confirm("Régénérer tous les aperçus avec les réglages actuels de filigrane et de qualité ? Les archives ZIP en cache seront supprimées.")) {
 			return;
 		}
 
@@ -368,6 +368,32 @@ export function GalleryEditor() {
 		await runReprocess();
 	};
 
+	/**
+	 * The compression the previews are written at, offered to the photos already derived.
+	 *
+	 * The same shape as the watermark above and for the same reason — the setting is
+	 * baked into the files, so alone it only decides how the next upload is derived —
+	 * except that there is nothing to count: the quality is gallery-wide, so every photo
+	 * in it is governed by this select.
+	 */
+	const handlePreviewQuality = async mode => {
+		const saved = await patch({ previewQuality: mode });
+
+		if (!saved || saved.photos.length === 0) {
+			return;
+		}
+
+		if (
+			!window.confirm(
+				`Régénérer les ${saved.photos.length} aperçu(s) déjà en ligne à cette qualité ?\n\nLes archives ZIP en cache seront supprimées. Sinon le réglage ne vaudra que pour les prochains envois.`
+			)
+		) {
+			return;
+		}
+
+		await runReprocess();
+	};
+
 	// A toggle rather than a one-way reveal, because the panel now drives the marks in
 	// the grid below: closing it is how the whole gallery comes back into view.
 	const toggleSelection = async () => {
@@ -409,6 +435,34 @@ export function GalleryEditor() {
 
 		if (await withGallery(() => adminApi.updatePhotos(gid, { order: sorted.map(photo => photo.pid) }))) {
 			setNotice("Trié par nom de fichier.");
+			setTimeout(() => setNotice(""), 2000);
+		}
+	};
+
+	/**
+	 * Deals the whole gallery out again in a random order.
+	 *
+	 * For a gallery read as a body of work rather than as a séance — the portfolio
+	 * above all — filename order groups it by shoot, which is the one order that makes
+	 * it look repetitive. Shuffling is the fastest way to a mixed grid, and it is
+	 * flat for the same reason the sort is: a set is a filter over this one array.
+	 */
+	const handleShuffle = async () => {
+		if (!window.confirm("Mélanger toutes les photos ? L’ordre actuel, trié ou arrangé à la main, sera remplacé.")) {
+			return;
+		}
+
+		// Fisher–Yates: every order equally likely, which `sort(() => Math.random() - 0.5)`
+		// is not — it leaves photos close to where they started.
+		const shuffled = gallery.photos.slice();
+
+		for (let index = shuffled.length - 1; index > 0; index -= 1) {
+			const swap = Math.floor(Math.random() * (index + 1));
+			[shuffled[index], shuffled[swap]] = [shuffled[swap], shuffled[index]];
+		}
+
+		if (await withGallery(() => adminApi.updatePhotos(gid, { order: shuffled.map(photo => photo.pid) }))) {
+			setNotice("Photos mélangées.");
 			setTimeout(() => setNotice(""), 2000);
 		}
 	};
@@ -596,6 +650,40 @@ export function GalleryEditor() {
 						</p>
 					</div>
 
+					<div className='field'>
+						<label htmlFor='gallery-preview-quality'>Qualité des aperçus</label>
+						<select id='gallery-preview-quality' value={gallery.previewQuality ?? "standard"} onChange={event => handlePreviewQuality(event.target.value)}>
+							{Object.entries(PREVIEW_QUALITY_LABELS).map(([value, label]) => (
+								<option key={value} value={value}>
+									{label}
+								</option>
+							))}
+						</select>
+						{/* The dimensions are not what changes, and a photographer reading
+						    "qualité" would reasonably expect them to: it is the compression of
+						    the two preview files, which is what decides how clean a gradient or
+						    a coat of fur looks at the same size. */}
+						<p className='admin-hint'>
+							Compression des aperçus 600 px et 2048 px — les dimensions ne changent pas. Plus la qualité est haute, plus les fichiers sont lourds à charger. Le changer
+							propose de régénérer les photos déjà en ligne.
+						</p>
+					</div>
+
+					<div className='admin-toggles'>
+						<label className='admin-toggle'>
+							<input type='checkbox' checked={Boolean(gallery.fullResTiles)} onChange={event => patch({ fullResTiles: event.target.checked })} />
+							<span>Vignettes en 2048 px</span>
+						</label>
+					</div>
+
+					{/* No regenerate offer here, unlike the two settings above: both preview
+					    files are written for every photo whatever this says, so it is only a
+					    question of which one the grid asks for — immediate, and reversible. */}
+					<p className='admin-hint'>
+						La grille charge le grand aperçu au lieu de la vignette 600 px : net sur écran retina et dans les grandes tuiles, au prix de bien plus de données pour le
+						visiteur. À réserver aux galeries courtes et au portfolio.
+					</p>
+
 					<div className='admin-panel__footer'>
 						<button className='button-secondary' type='button' onClick={handleReprocess}>
 							Régénérer les aperçus
@@ -642,6 +730,9 @@ export function GalleryEditor() {
 						</button>
 						<button className='button-secondary' type='button' disabled={gallery.photos.length < 2} onClick={handleSortByFilename}>
 							Trier par nom de fichier
+						</button>
+						<button className='button-secondary' type='button' disabled={gallery.photos.length < 2} onClick={handleShuffle}>
+							Mélanger
 						</button>
 					</div>
 

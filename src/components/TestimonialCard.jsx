@@ -1,3 +1,5 @@
+import { Image } from "./Image.jsx";
+
 function TestimonialArrow() {
 	return (
 		<svg className='testimonial-card__arrow' viewBox='0 0 52 16' fill='none' aria-hidden='true'>
@@ -21,7 +23,7 @@ export function TestimonialCard({ testimonial, onPrev, onNext }) {
 		<article className='testimonial-card'>
 			{testimonial.avatar && (
 				<div className='testimonial-card__avatar' aria-hidden='true'>
-					<img src={testimonial.avatar} alt='' className='testimonial-card__avatar-image' />
+					<Image src={testimonial.avatar} alt='' className='testimonial-card__avatar-image' />
 				</div>
 			)}
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { SectionHeading } from "./SectionHeading.jsx";
+import { Image } from "./Image.jsx";
 import { siteConfig } from "../data/siteData.js";
 
 // The feed is a static document written by the instagram-feed Lambda and served
@@ -41,7 +42,7 @@ export function InstagramFeed() {
 				<div className='instagram-grid'>
 					{posts.map(post => (
 						<a className='picture-card instagram-card' key={post.id} href={post.permalink} target='_blank' rel='noopener noreferrer'>
-							<img src={post.image} alt={post.caption ? post.caption.slice(0, 120) : "Publication Instagram d’Ankaa Studio"} className='picture-card__image' loading='lazy' decoding='async' />
+							<Image src={post.image} alt={post.caption ? post.caption.slice(0, 120) : "Publication Instagram d’Ankaa Studio"} className='picture-card__image' loading='lazy' decoding='async' />
 						</a>
 					))}
 

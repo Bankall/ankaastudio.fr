@@ -20,6 +20,16 @@ export const WATERMARK_LABELS = {
 
 export const INHERITED_WATERMARK_LABEL = "Filigrane de la galerie";
 
+// How hard the previews are compressed, as the photographer reads them. Gallery-wide —
+// there is no per-tab override to inherit from — and baked into the files, so changing
+// it only reaches photos derived afterwards. Must match PREVIEW_QUALITY_MODES in the
+// API's lib/galleries.mjs, and the quality table in the processor.
+export const PREVIEW_QUALITY_LABELS = {
+	standard: "Standard — fichiers légers (recommandé)",
+	high: "Haute — dégradés et poils plus nets",
+	max: "Maximale — fichiers lourds"
+};
+
 /**
  * The mode a photo dropped into this tab will be derived with — the same resolution the
  * API's own watermarkFor() does, so the uploader can say it before the upload starts.
