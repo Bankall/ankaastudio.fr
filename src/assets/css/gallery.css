@@ -812,6 +812,10 @@
 		column-count: 1;
 	}
 
+	.photo-grid--portfolio {
+		padding: 0 var(--gallery-gutter);
+	}
+
 	.gallery-cover {
 		padding: 4rem 1.25rem 6rem;
 	}
