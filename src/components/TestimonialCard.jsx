@@ -12,7 +12,6 @@ function TestimonialArrow() {
 export function TestimonialCard({ testimonial, onPrev, onNext, className }) {
 	// Quotes are hand-edited and may carry line breaks as <br/> or newlines;
 	// render them as real breaks without injecting raw HTML.
-	const lines = testimonial.quote.split(/\s*<br\s*\/?>\s*|\n/);
 
 	return (
 		<article className={`testimonial-card ${className || ""}`}>
