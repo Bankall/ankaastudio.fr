@@ -1082,6 +1082,10 @@
 
 .page-stack {
 	display: grid;
+	gap: 1rem;
+}
+
+.package .page-stack {
 	gap: 5.4rem;
 }
 

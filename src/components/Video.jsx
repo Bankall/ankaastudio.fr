@@ -4,11 +4,16 @@ import { useEffect, useRef, useState } from "react";
 // crossing it starts playback and brings the video into its frame, and falling
 // back below it pauses.
 //
-// The entrance depends on where the visitor came from. On the way down the page
-// the video rises into the frame; met on the way up, with the frame already in
-// front of them, there is no entrance to make and it is simply put there. Either
-// way it happens once — replaying it on every pass would read as a glitch rather
-// than as an arrival.
+// The entrance is opt-in, through revealOnScroll: it is worth making where the
+// player is the thing the page is scrolling towards, and only noise where the
+// video is one card of several. Without the flag the player simply holds its
+// video, and everything below about entrances does not apply to it.
+//
+// Where it is asked for, the entrance depends on where the visitor came from. On
+// the way down the page the video rises into the frame; met on the way up, with
+// the frame already in front of them, there is no entrance to make and it is
+// simply put there. Either way it happens once — replaying it on every pass
+// would read as a glitch rather than as an arrival.
 
 // The same half-on-screen rule the pictures fade in on, so the showreel and the
 // photographs around it come to life at one point of a scroll (see Image.jsx).
@@ -23,17 +28,20 @@ const REVEAL_CLASSES = {
 	shown: "video-player--shown"
 };
 
-export function Video({ src, alt, className, style }) {
+export function Video({ src, alt, className, style, muted, revealOnScroll }) {
 	const videoRef = useRef(null);
 	const videoPlayerRef = useRef(null);
 	// Starts muted: autoplay is only allowed without sound, so the toggle is the
 	// visitor's way in.
 	const [isMuted, setIsMuted] = useState(true);
-	// Null until the scroll brings the player into view. Shown outright where
-	// there is no observer to tell us when that is: a frame that stays empty for
-	// good is worse than no entrance at all, and that is a fact about the browser
-	// rather than about the scroll, so it belongs in the first render.
-	const [reveal, setReveal] = useState(() => (typeof IntersectionObserver === "undefined" ? "shown" : null));
+	// Null until the scroll brings the player into view, and only where there is
+	// an entrance to wait for. Shown outright otherwise — a player nobody asked
+	// to make one, and a player with no observer to time it by, both want the
+	// state the arrival would have left behind, since the unmodified frame is the
+	// empty one and a frame that stays empty for good is worse than no entrance
+	// at all. Both are settled before any scrolling, which is what puts them in
+	// the first render rather than in the observer below.
+	const [reveal, setReveal] = useState(() => (revealOnScroll && typeof IntersectionObserver !== "undefined" ? null : "shown"));
 
 	useEffect(() => {
 		const video = videoRef.current;
@@ -55,7 +63,9 @@ export function Video({ src, alt, className, style }) {
 					if (entry.intersectionRatio >= ON_SCREEN_RATIO) {
 						// Whichever entrance the first crossing picks is the one the
 						// visitor gets; later crossings find the state already set and
-						// leave it be.
+						// leave it be. A player without the flag starts out set, so the
+						// same guard is what keeps this from reaching in and revealing
+						// one that was never meant to arrive.
 						setReveal(current => current ?? (isApproachedFromBelow(entry) ? "pop" : "shown"));
 						// Rejects when autoplay is blocked or the play is interrupted by
 						// a pause; either way there is nothing to recover from.
@@ -92,9 +102,11 @@ export function Video({ src, alt, className, style }) {
 			<div className='video-player__container'>
 				<video ref={videoRef} src={src} alt={alt} className={className} style={style} muted loop playsInline />
 
-				<button type='button' className='video-player__sound' onClick={() => setIsMuted(wasMuted => !wasMuted)} aria-pressed={!isMuted} aria-label={isMuted ? "Activer le son" : "Couper le son"}>
-					<SoundIcon muted={isMuted} />
-				</button>
+				{!muted && (
+					<button type='button' className='video-player__sound' onClick={() => setIsMuted(wasMuted => !wasMuted)} aria-pressed={!isMuted} aria-label={isMuted ? "Activer le son" : "Couper le son"}>
+						<SoundIcon muted={isMuted} />
+					</button>
+				)}
 			</div>
 		</div>
 	);

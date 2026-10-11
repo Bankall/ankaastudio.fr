@@ -30,7 +30,7 @@ export function CreationGraphiquePage() {
 				</div>
 			</section>
 
-			<section className='section'>
+			<section className='section package'>
 				<div className='container page-stack'>
 					<SectionHeading level={2} eyebrow='Création Graphique' />
 					<span className='section-heading__description'>

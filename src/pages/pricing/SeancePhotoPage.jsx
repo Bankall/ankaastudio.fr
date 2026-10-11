@@ -28,7 +28,7 @@ export function SeancePhotoPage() {
 				</div>
 			</section>
 
-			<section className='section'>
+			<section className='section package'>
 				<div className='container page-stack'>
 					<SectionHeading level={1} eyebrow='Photo' />
 

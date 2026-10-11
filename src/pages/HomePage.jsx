@@ -67,7 +67,7 @@ export function HomePage() {
 					/>
 
 					<div className='video-container'>
-						<Video src={videoCard.url} alt={videoCard.text} className='picture-card__video' style={{ opacity: videoCard.url ? 1 : 0 }} />
+						<Video src={videoCard.url} alt={videoCard.text} className='picture-card__video' style={{ opacity: videoCard.url ? 1 : 0 }} revealOnScroll />
 					</div>
 				</div>
 			</section>

@@ -207,19 +207,13 @@ export function ContactPage() {
 								</ul>
 							</article>
 
-							<article className='embed-card card'>
+							{/* <article className='embed-card card'>
 								<div className='contact-card' style={{ boxShadow: "none", border: "0", background: "transparent", padding: "1.2rem 1.2rem 0" }}>
 									<span className='contact-card__eyebrow'>Calendly</span>
 									<h2 className='contact-card__title'>Trouvons un créneau ensemble</h2>
-									{/* 
-									<div className='form-actions'>
-										<a className='button-secondary' href={siteConfig.calendlyUrl} target='_blank' rel='noreferrer'>
-											Réserver via Calendly
-										</a>
-									</div> */}
 								</div>
 								<iframe className='embed-card__frame' title='Calendly Ankaa Studio' src={siteConfig.calendlyUrl} loading='lazy' />
-							</article>
+							</article> */}
 						</div>
 					</div>
 				</div>
