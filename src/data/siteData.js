@@ -28,19 +28,19 @@ export const socialLinks = [
 
 export const photographyCards = [
 	{
-		url: "/home/Fichier 4.jpg",
+		url: "/image/alaska-n-co.min.jpg",
 		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		url: "/home/Fichier 3.jpg",
+		url: "/image/naia.min.jpg",
 		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		url: "/home/Fichier 2.jpg",
+		url: "/image/koda.min.jpg",
 		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		url: "/home/Fichier 1.jpg",
+		url: "/image/emeline-mozza.min.jpg",
 		text: "Portrait d’un chien dans une lumière douce"
 	}
 ];
@@ -54,15 +54,15 @@ export const videoCard = {
 
 export const designCards = [
 	{
-		url: "/home/Fichier 6.jpg",
+		url: "/image/kakemono.min.jpg",
 		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		url: "/home/Fichier 5.jpg",
+		url: "/image/t-shirt.min.png",
 		text: "Portrait d’un chien dans une lumière douce"
 	},
 	{
-		url: "/home/Fichier 7.png",
+		url: "/image/flyer.min.png",
 		text: "Portrait d’un chien dans une lumière douce"
 	}
 ];
@@ -72,27 +72,27 @@ export const testimonials = [
 		quote: `J’ai rencontré Sophie par hasard lors d’un événement. J’ai adoré les photos qu’elle a prises à cette occasion et ai alors suivi sa page. Et j’ai tout de suite accroché aux photos partagées : j’avais l’impression d’y être. J’ai donc choisi de lui confier le shooting d’Alaska ainsi que pour nos 10 ans avec mon conjoint. Et le rendu est exceptionnel : je n’ai pas su choisir tellement elles sont magnifiques. Elle ne partage pas seulement une image : une réelle émotion se dégage de ses photos.
 		Encore merci Sophie, et à très vite pour un nouveau shooting ! 📸`,
 		name: "Mélody Hunter",
-		avatar: "/testimonials/melody-hunter.jpg"
+		avatar: "/avatar/melody-hunter.jpg"
 	},
 	{
 		quote: "Tellement heureuse d’avoir fait confiance à Sophie pour immortaliser de précieux instants avec ma Naïa. Beaucoup d’amour, de douceur, de bienveillance et de professionnalisme pendant le shooting. Résultat : de magnifiques photos qui reflètent la douceur et le brin de folie de ma compagne à 4 pattes !",
 		name: "Anne Claire Dvl",
-		avatar: "/testimonials/anne-claire-dvl.jpg"
+		avatar: "/avatar/anne-claire-dvl.jpg"
 	},
 	{
 		quote: "Il ne faut pas hésiter à faire un shooting photo avec elle, les photos sont sublimes. Elle est douce donc met à l’aise les chiens sensibles. Une très bonne expérience pour mes chiens et moi.",
 		name: "Elodie Elo",
-		avatar: "/testimonials/elodie-elo.jpg"
+		avatar: "/avatar/elodie-elo.jpg"
 	},
 	{
 		quote: "Sophie avec son joli coup d’œil a régulièrement shooté mon Saïan. Amoureuse des animaux, elle sait faire ressortir le meilleur d’eux avec beaucoup de douceur et de respect de leurs besoins. On adore !",
 		name: "Stephanie Sauvage Goncalves Hubas",
-		avatar: "/testimonials/stephanie-sauvage.jpg"
+		avatar: "/avatar/stephanie-sauvage.jpg"
 	},
 	{
 		quote: "Super expérience avec Ankaa Studio. Elle met vite à l’aise et s’adapte vraiment bien au chien, ce qui rend la séance fluide et agréable. Les photos sont très réussies, avec une belle lumière et un vrai sens du détail. On sent qu’il y a du travail derrière ! Très contente du rendu, je recommande sans hésiter.",
 		name: "Marie Mylinh Lavolé",
-		avatar: "/testimonials/marie-mylinh-lavole.jpg"
+		avatar: "/avatar/marie-mylinh-lavole.jpg"
 	},
 	{
 		quote: `J’ai rencontré Sophie lorsque l’on a partagé un événement canin. ☺️
@@ -102,26 +102,32 @@ Bailey a été très à l’aise avec Sophie, elle a su nous conseiller sur comm
 Nous qui étions partis sur le choix de 5 photos, nous sommes repartis avec la formule à 20 photos tellement il nous était impossible de nous décider pour choisir 😍
 Ce qui est sûr c’est que tous nos futurs moments de vie seront capturés par Sophie 🥰`,
 		name: "Sarah Lartillerie",
-		avatar: "/testimonials/sarah-lartillerie.jpg",
-		className: "big-testimonial"
+		avatar: "/avatar/sarah-lartillerie.jpg",
+		className: "big"
 	}
 ];
 
+// Only what the /tarifs grid and the contact form's service select need: the
+// detail of each formula is written as static markup in src/pages/pricing/,
+// because no two formulas are structured the same way.
 export const pricingPlans = [
 	{
+		featured: true,
 		slug: "seance-photo",
 		name: "Séance photo",
-		featured: true
+		image: "/image/bulma.min.jpg"
 	},
 	{
+		featured: true,
 		slug: "reportage-video",
 		name: "Reportage vidéo",
-		featured: true
+		image: "/image/versus.min.jpg"
 	},
 	{
+		featured: true,
 		slug: "creation-graphique",
 		name: "Création graphique",
-		featured: true
+		image: "/image/t-shirt-mantrailing.min.jpg"
 	},
 	{
 		slug: "other-services",

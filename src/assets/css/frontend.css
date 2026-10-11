@@ -66,11 +66,14 @@
 .hero__title,
 .hero__description,
 .page-hero__title,
-.page-hero__description {
+.page-hero__description,
+.pricing-card__title,
+.package-card__title {
 	margin: 0;
 	font-family: var(--font-display);
 	font-weight: 300;
 	letter-spacing: -0.03em;
+	line-height: initial;
 	color: var(--text);
 	padding: 0 1rem;
 }
@@ -94,6 +97,58 @@
 .about-section__description {
 	max-width: 70rem;
 	margin: 0 auto;
+}
+
+.package-card {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+
+	column-gap: 5.4rem;
+	row-gap: 2.4rem;
+
+	&.is-odd {
+		flex-direction: row-reverse;
+	}
+}
+
+.package-card__content,
+.package-card .picture-card {
+	width: calc(50% - 2.4rem / 2);
+}
+
+.package-card__content {
+	display: flex;
+	flex-direction: column;
+	gap: 1.6rem;
+}
+
+.is-odd .package-card__content {
+	text-align: right;
+}
+
+.package-card__title {
+	font-size: 2.45rem;
+	padding: 0;
+}
+
+.package-card__description p {
+	margin: 0;
+}
+
+.package-card__keypoints {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+
+	li {
+		margin: 0.4rem 0;
+	}
+}
+
+.package-card__price {
+	padding-top: 1.25rem;
+	border-top: 1px solid rgba(49, 40, 32, 0.2);
 }
 
 .eyebrow {
@@ -141,16 +196,6 @@
 	min-width: 0;
 }
 
-.brand__mark {
-	width: 3rem;
-	height: 3rem;
-	flex: none;
-	border-radius: 1rem;
-	background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(228, 208, 188, 0.92));
-	border: 1px solid rgba(93, 66, 45, 0.12);
-	box-shadow: 0 10px 24px rgba(93, 66, 45, 0.12);
-}
-
 .brand__copy {
 	display: grid;
 	gap: 0.1rem;
@@ -163,11 +208,6 @@
 	font-size: 1.45rem;
 	font-weight: 300;
 	line-height: 1;
-}
-
-.brand__tagline {
-	color: var(--muted);
-	font-size: 0.84rem;
 }
 
 .menu-toggle {
@@ -329,7 +369,7 @@
 .hero__title {
 	font-size: 1.6rem;
 	color: #fff;
-	background: var(--text);
+	background: #1a1919;
 	padding: 0.7rem 2.4rem;
 	text-transform: uppercase;
 }
@@ -421,8 +461,7 @@
 .pricing-card,
 .contact-card,
 .blog-card,
-.about-card,
-.gallery-card,
+.pricing-plan-card,
 .card {
 	padding: 1.2rem;
 	border-radius: var(--radius-md);
@@ -438,7 +477,7 @@
 }
 
 .picture-card {
-	box-shadow: 0 14px 32px rgba(74, 52, 31, 0.08);
+	box-shadow: 0 14px 32px rgba(74, 52, 31, 0.2);
 }
 
 .picture-card__image {
@@ -606,7 +645,6 @@
 	font-family: var(--font-display);
 }
 
-.pricing-card__title,
 .contact-card__title,
 .blog-card__title,
 .about-card__title,
@@ -675,75 +713,45 @@
 	text-decoration: underline;
 }
 
-.gallery-toolbar {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.7rem;
-}
-
-.gallery-toolbar__button {
-	padding: 0.72rem 1rem;
-	border-radius: 999px;
-	border: 1px solid var(--line);
-	background: rgba(255, 255, 255, 0.66);
-	color: var(--text-strong);
-	font-weight: 300;
-}
-
-.gallery-toolbar__button.is-active {
-	border-color: rgba(138, 106, 75, 0.26);
-	background: rgba(138, 106, 75, 0.12);
-	color: var(--accent-strong);
-}
-
-.gallery-grid {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-	gap: 1rem;
-}
-
-.gallery-card {
-	padding: 0.85rem;
-	cursor: pointer;
-	transition:
-		transform 180ms ease,
-		box-shadow 180ms ease;
-}
-
-.gallery-card:hover {
-	transform: translateY(-3px);
-	box-shadow: 0 18px 38px rgba(74, 52, 31, 0.12);
-}
-
-.gallery-card__media {
-	aspect-ratio: 4 / 5;
-	border-radius: 18px;
-	overflow: hidden;
-	background: linear-gradient(135deg, rgba(138, 106, 75, 0.18), rgba(255, 255, 255, 0.7));
-}
-
-.gallery-card__image {
-	width: 100%;
-	height: 100%;
-	object-fit: cover;
-}
-
-.gallery-card__meta {
-	display: grid;
-	gap: 0.35rem;
-	padding: 0.8rem 0.35rem 0.15rem;
-}
-
 .gallery-card__category,
-.pricing-card__label,
 .contact-card__eyebrow,
-.blog-card__eyebrow,
-.about-card__eyebrow {
+.blog-card__eyebrow {
 	color: var(--accent-strong);
 	font-size: 0.78rem;
 	font-weight: 500;
 	letter-spacing: 0.12em;
 	text-transform: uppercase;
+}
+
+.pricing-card__action {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.8rem;
+}
+
+.pricing-card__title,
+.pricing-card__subtitle {
+	transition: color 180ms ease;
+}
+
+.pricing-card__arrow {
+	transform: translateX(-4px);
+	transition:
+		color 180ms ease,
+		transform 180ms ease;
+}
+
+.pricing-card:hover {
+	.pricing-card__title,
+	.pricing-card__subtitle {
+		color: var(--accent-strong);
+	}
+
+	.pricing-card__arrow {
+		color: var(--accent-strong);
+		transform: translateX(0);
+	}
 }
 
 .modal {
@@ -818,16 +826,11 @@
 .pricing-card {
 	display: grid;
 	gap: 1rem;
+	box-shadow: none;
 }
 
 .pricing-card.is-featured {
-	border-color: rgba(138, 106, 75, 0.22);
-	background: linear-gradient(180deg, rgba(255, 252, 246, 0.94), rgba(242, 228, 212, 0.94));
-}
-
-.pricing-card__header {
-	display: grid;
-	gap: 0.4rem;
+	border: 0;
 }
 
 .pricing-card__title {
@@ -835,55 +838,18 @@
 	font-size: 1.45rem;
 }
 
-.pricing-card__price {
-	display: flex;
-	align-items: baseline;
-	gap: 0.35rem;
-	color: var(--text-strong);
-	font-size: 2rem;
-	font-family: var(--font-display);
-	line-height: 1;
-}
-
-.pricing-card__price small {
-	color: var(--muted);
-	font-family: var(--font-body);
-	font-size: 0.92rem;
-}
-
-.pricing-card__list {
-	display: grid;
-	gap: 0.55rem;
-	padding: 0;
+.pricing-card__subtitle {
 	margin: 0;
-	list-style: none;
+	font-size: 0.9rem;
+	text-transform: uppercase;
 }
 
-.pricing-card__list li::before {
-	content: "•";
-	margin-right: 0.55rem;
-	color: var(--accent-strong);
-}
-
-.pricing-card__actions {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 0.75rem;
-	margin-top: auto;
-}
-
-.testimonial-grid,
-.contact-grid,
-.about-grid,
 .blog-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
 	gap: 1rem;
 }
 
-/* One testimonial per slide: avatar centred at the top, the quote in the
-   vertical middle, and the client name flanked by wide arrows at the bottom.
-   min-width:0 keeps the swiper from blowing up inside the flex .container. */
 .swiper.testimonial-swiper {
 	width: 100%;
 	min-width: 0;
@@ -898,7 +864,8 @@
 	display: flex;
 }
 
-.testimonial-card {
+.testimonial-card,
+.pricing-plan-card {
 	flex: 1;
 	min-width: 0;
 	display: flex;
@@ -927,23 +894,30 @@
 	object-fit: cover;
 }
 
-.testimonial-card__quote-wrap {
+.testimonial-card__quote-wrap,
+.pricing-plan__informations-wrap {
 	flex: 1;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
 
-.testimonial-card__quote {
+.testimonial-card__quote,
+.pricing-plan__informations {
 	margin: 0;
-	max-width: 46rem;
+	max-width: 49rem;
 	color: var(--text);
 	font-family: var(--font-display);
-	font-size: clamp(0.85rem, 1.6vw, 1.1rem);
+	font-size: clamp(1.05rem, 1.6vw, 1.1rem);
 	line-height: 1.7;
+
+	b {
+		font-weight: 600;
+	}
 }
 
-.testimonial-card.big-testimonial .testimonial-card__quote {
+.testimonial-card.big .testimonial-card__quote,
+.pricing-plan__informations-wrap.big .pricing-plan__informations {
 	max-width: none;
 	font-size: clamp(0.85rem, 1.6vw, 1rem);
 }
@@ -981,7 +955,8 @@
 		color 180ms ease;
 }
 
-.testimonial-card__arrow {
+.testimonial-card__arrow,
+.pricing-card__arrow {
 	display: block;
 	width: 3.25rem;
 	height: 1rem;
@@ -1073,18 +1048,13 @@
 }
 
 .contact-card,
-.about-card,
 .blog-card {
 	display: grid;
 	gap: 0.9rem;
 	align-content: start;
 }
 
-.contact-card__list,
-.service-list,
-.detail-list,
-.faq-list,
-.timeline {
+.contact-card__list {
 	display: grid;
 	gap: 0.65rem;
 	padding: 0;
@@ -1112,7 +1082,7 @@
 
 .page-stack {
 	display: grid;
-	gap: 1.15rem;
+	gap: 5.4rem;
 }
 
 .cta-banner {
@@ -1264,5 +1234,19 @@
 
 	.embed-card__frame {
 		min-height: 24rem;
+	}
+
+	.package-card,
+	.package-card.is-odd {
+		flex-direction: column;
+	}
+
+	.package-card__content,
+	.package-card .picture-card {
+		width: 100%;
+	}
+
+	.is-odd .package-card__content {
+		text-align: left;
 	}
 }

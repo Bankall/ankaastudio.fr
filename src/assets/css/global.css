@@ -12,7 +12,7 @@
 	--surface-highlight: #d3e1d5;
 	--line: rgba(49, 40, 32, 0.12);
 	--line-strong: rgba(49, 40, 32, 0.22);
-	--text: #1a1919;
+	--text: #5d5e5d;
 	--text-strong: #fff;
 	--text-highlight: #2f6d78;
 	--muted: #7a6d64;
@@ -94,7 +94,7 @@ canvas {
    never gets the property and falls back to no delay at all. */
 .image {
 	opacity: 0;
-	transition: opacity 600ms ease var(--image-fade-delay, 0ms);
+	transition: opacity 1000ms ease var(--image-fade-delay, 0ms);
 }
 
 .image--revealed {

@@ -53,6 +53,7 @@ export function Image({
 	style,
 	onLoad,
 	onError,
+	src,
 	// A picture that fails to load counts as settled by default and fades in
 	// anyway: its alt text and the browser's own broken-image mark are better
 	// than an element that can never become visible, which hides the breakage
@@ -161,28 +162,28 @@ export function Image({
 	// Left off entirely when there is no stagger, so an unstaggered picture keeps
 	// whatever transition-delay its own stylesheet asked for.
 	const fadeStyle = fadeDelay ? { ...style, "--image-fade-delay": `${fadeDelay}ms` } : style;
-
 	// onLoad last and merged rather than spread over: it is what tells waitForLoad
 	// the pixels are here, so a caller with its own handler must not replace it.
-	return (
-		<img
-			ref={imageRef}
-			className={classNames}
-			style={fadeStyle}
-			{...imageProps}
-			onLoad={event => {
-				setHasLoaded(true);
-				onLoad?.(event);
-			}}
-			onError={event => {
-				if (revealOnError) {
+	return src ?
+			<img
+				ref={imageRef}
+				src={src}
+				className={classNames}
+				style={fadeStyle}
+				{...imageProps}
+				onLoad={event => {
 					setHasLoaded(true);
-				}
+					onLoad?.(event);
+				}}
+				onError={event => {
+					if (revealOnError) {
+						setHasLoaded(true);
+					}
 
-				onError?.(event);
-			}}
-		/>
-	);
+					onError?.(event);
+				}}
+			/>
+		:	null;
 }
 
 function hasObserver() {

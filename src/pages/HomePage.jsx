@@ -84,11 +84,6 @@ Identité graphique, contenus pour les réseaux sociaux, supports imprimés… c
 					<div className='grid grid--3 design-grid'>
 						{designCards.map((designCard, index) => (
 							<article className='picture-card' key={`design-card-${index}`}>
-								{/* Cards whose picture is not chosen yet hold their place in the
-								    grid as an empty frame. It takes the image class for its
-								    aspect ratio, so the row keeps its height — and it is a plain
-								    div rather than a hidden <img>, which would otherwise be an
-								    image element pointed at nothing. */}
 								{designCard.url ?
 									<Image src={designCard.url} alt={designCard.text} className='picture-card__image' loading='lazy' decoding='async' />
 								:	<div className='picture-card__image' />}

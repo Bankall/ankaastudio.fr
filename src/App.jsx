@@ -9,6 +9,9 @@ import { HomePage } from "./pages/HomePage.jsx";
 import { NotFoundPage } from "./pages/NotFoundPage.jsx";
 import { PortfolioPage } from "./pages/PortfolioPage.jsx";
 import { PricingPage } from "./pages/PricingPage.jsx";
+import { SeancePhotoPage } from "./pages/pricing/SeancePhotoPage.jsx";
+import { ReportageVideoPage } from "./pages/pricing/ReportageVideoPage.jsx";
+import { CreationGraphiquePage } from "./pages/pricing/CreationGraphiquePage.jsx";
 import { CgvPage } from "./pages/CgvPage.jsx";
 
 // Client galleries and the admin area are lazy: neither is ever visited by a
@@ -78,6 +81,9 @@ function App() {
 						<Route path='/' element={<HomePage />} />
 						<Route path='/portfolio' element={<PortfolioPage />} />
 						<Route path='/tarifs' element={<PricingPage />} />
+						<Route path='/tarifs/seance-photo' element={<SeancePhotoPage />} />
+						<Route path='/tarifs/reportage-video' element={<ReportageVideoPage />} />
+						<Route path='/tarifs/creation-graphique' element={<CreationGraphiquePage />} />
 						<Route path='/contact' element={<ContactPage />} />
 						<Route path='/a-propos' element={<AboutPage />} />
 						<Route path='/conditions-generales-vente' element={<CgvPage />} />

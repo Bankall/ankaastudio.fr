@@ -1,4 +1,5 @@
 import { Image } from "./Image.jsx";
+import { Text } from "./Text.jsx";
 
 function TestimonialArrow() {
 	return (
@@ -23,14 +24,7 @@ export function TestimonialCard({ testimonial, onPrev, onNext, className }) {
 
 			<div className='testimonial-card__quote-wrap'>
 				<p className='testimonial-card__quote'>
-					“
-					{lines.map((line, index) => (
-						<span key={index}>
-							{index > 0 && <br />}
-							{line}
-						</span>
-					))}
-					”
+					“<Text>{testimonial.quote}</Text>”
 				</p>
 			</div>
 

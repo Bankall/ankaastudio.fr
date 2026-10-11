@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Seo } from "../components/Seo.jsx";
+import { SectionHeading } from "../components/SectionHeading.jsx";
 import { Lightbox } from "../gallery/Lightbox.jsx";
 import { PhotoTile } from "../gallery/PhotoTile.jsx";
 import { siteConfig } from "../data/siteData.js";
@@ -89,12 +90,20 @@ export function PortfolioPage() {
 			</section>
 
 			<section className='section'>
+				<SectionHeading level={1} eyebrow='Portfolio' title='Découvrez mon univers en images' description='' />
+
 				{state.status === "loading" ?
-					<p className='gallery-view__status'>Chargement du portfolio…</p>
+					<div className='container'>
+						<p className='gallery-view__status'>Chargement du portfolio…</p>
+					</div>
 				: state.status === "error" ?
-					<p className='gallery-view__status'>Le portfolio est momentanément indisponible. Réessayez dans un instant.</p>
+					<div className='container'>
+						<p className='gallery-view__status'>Le portfolio est momentanément indisponible. Réessayez dans un instant.</p>
+					</div>
 				: photos.length === 0 ?
-					<p className='gallery-view__status'>Les photos arrivent bientôt.</p>
+					<div className='container'>
+						<p className='gallery-view__status'>Les photos arrivent bientôt.</p>
+					</div>
 				:	<div className='photo-grid photo-grid--portfolio'>
 						{photos.map((photo, index) => (
 							<PhotoTile key={photo.pid} photo={photo} index={index} fullResTiles={Boolean(state.fullResTiles)} onOpen={setLightboxIndex} />
