@@ -652,9 +652,15 @@ Resources:
                       ViewerProtocolPolicy: https-only
                       AllowedMethods: [GET, HEAD, OPTIONS]
                       Compress: false
-                      # CachingOptimized forwards no cookies, so the signature cookies
-                      # stay out of the cache key and one edge copy serves every client.
-                      CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+                      # CachingOptimizedForUncompressedObjects, not CachingOptimized:
+                      # same TTLs, but it leaves Accept-Encoding out of the cache key.
+                      # The compressing variant puts the normalised value in, which
+                      # splits every object into four copies — gzip, br, both, neither —
+                      # and a jpeg compresses to nothing anyway, so the four fills and
+                      # the four times the edge footprint buy nothing. Neither policy
+                      # forwards cookies, so the signature cookies stay out of the cache
+                      # key either way and one edge copy still serves every client.
+                      CachePolicyId: b2884449-e4de-46a7-ac36-70bc7f1ddd6d
                       TrustedKeyGroups: [!Ref KeyGroupId]
 
                     # The Instagram mirror: public copies of public posts, so no
@@ -671,15 +677,26 @@ Resources:
                     # The home page showreel: public too, so no TrustedKeyGroups.
                     # Compression is off — an mp4 is already compressed, and the
                     # <video> element needs the byte ranges S3 serves untouched.
-                    # CachingOptimized honours the day-long Cache-Control that
-                    # upload-video.sh sets, and that script invalidates the prefix
-                    # when it replaces the file.
+                    #
+                    # So the uncompressed-objects policy here as well, and it matters
+                    # more than on the photographs: the showreel is tens of megabytes,
+                    # the edge evicts large and rarely-asked-for objects first, and
+                    # splitting it four ways by Accept-Encoding left each copy cold
+                    # long before its day-long TTL ran out. One copy per POP is the
+                    # difference between a cache that survives between visitors and a
+                    # cache that misses on nearly every one.
+                    #
+                    # The TTL comes from the day-long Cache-Control upload-video.sh
+                    # sets; a file uploaded any other way carries none, and then the
+                    # policy's equal DefaultTTL stands in at the edge — but browsers
+                    # get nothing to go on and re-fetch the whole video on every page
+                    # view. upload-video.sh also invalidates the key it replaces.
                     - PathPattern: /video/*
                       TargetOriginId: media
                       ViewerProtocolPolicy: redirect-to-https
                       AllowedMethods: [GET, HEAD, OPTIONS]
                       Compress: false
-                      CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+                      CachePolicyId: b2884449-e4de-46a7-ac36-70bc7f1ddd6d
 
     SiteHeadersPolicy:
         Type: AWS::CloudFront::ResponseHeadersPolicy
