@@ -25,7 +25,8 @@ import { useEffect, useRef, useState } from "react";
 //    and a row fading up in unison reads as one slab rather than as pictures.
 //    Each one waits a random moment first — see `stagger`.
 //
-// The fade itself is CSS, on .image / .image--revealed in global.css. Callers
+// The fade itself is CSS, on .image / .image--revealed / .image--transparent in
+// global.css. Callers
 // that cross-fade a layer of their own behind the picture hear about the reveal
 // through `onReveal` and key their own rules off it.
 //
@@ -63,6 +64,11 @@ export function Image({
 	preloadMargin,
 	revealRatio = REVEAL_RATIO,
 	waitForLoad = true,
+	// A picture whose own edges are not its frame's — a logo on a transparent
+	// PNG, say. The reveal's drop shadow is drawn around the element rather than
+	// around the pixels, so on one of those it reads as a shadow cast by nothing;
+	// this leaves it off.
+	transparent = false,
 	// How far the fade may be thrown, in milliseconds; 0 turns the stagger off
 	// for callers whose timing is already spoken for.
 	stagger = STAGGER_MS,
@@ -158,7 +164,9 @@ export function Image({
 	}
 
 	// The caller's own class comes last so a picture can still overrule the fade.
-	const classNames = ["image", isRevealed && "image--revealed", className].filter(Boolean).join(" ");
+	const classNames = ["image", isRevealed && "image--revealed", transparent && "image--transparent", className]
+		.filter(Boolean)
+		.join(" ");
 	// Left off entirely when there is no stagger, so an unstaggered picture keeps
 	// whatever transition-delay its own stylesheet asked for.
 	const fadeStyle = fadeDelay ? { ...style, "--image-fade-delay": `${fadeDelay}ms` } : style;

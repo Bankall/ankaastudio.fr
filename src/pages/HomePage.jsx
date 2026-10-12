@@ -33,7 +33,7 @@ export function HomePage() {
 				<div className='container'>
 					<div className='hero__panel'>
 						<div className='hero__content'>
-							<Image src={logo} alt='Ankaa Studio' className='hero__logo' />
+							<Image src={logo} alt='Ankaa Studio' className='hero__logo' transparent />
 							<h1 className='hero__title'>Photo - Vidéo - Création graphique</h1>
 						</div>
 					</div>

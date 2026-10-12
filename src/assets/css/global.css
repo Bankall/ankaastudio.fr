@@ -104,6 +104,14 @@ canvas {
 	box-shadow: 0 14px 32px rgba(74, 52, 31, 0.2);
 }
 
+/* A picture that does not fill its own box — a logo on a transparent PNG. The
+   shadow above is drawn around the element, so there it would hang in the air
+   around the artwork rather than under it; `transparent` on Image.jsx asks for
+   the fade on its own. */
+.image--transparent {
+	box-shadow: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.image {
 		transition-duration: 1ms;
