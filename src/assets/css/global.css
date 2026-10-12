@@ -94,11 +94,14 @@ canvas {
    never gets the property and falls back to no delay at all. */
 .image {
 	opacity: 0;
-	transition: opacity 1000ms ease var(--image-fade-delay, 0ms);
+	transition:
+		opacity 1000ms ease var(--image-fade-delay, 0ms),
+		box-shadow 1000ms ease var(--image-fade-delay, 500ms);
 }
 
 .image--revealed {
 	opacity: 1;
+	box-shadow: 0 14px 32px rgba(74, 52, 31, 0.2);
 }
 
 @media (prefers-reduced-motion: reduce) {

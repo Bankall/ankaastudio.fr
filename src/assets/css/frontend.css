@@ -476,10 +476,6 @@
 	gap: 1rem;
 }
 
-.picture-card {
-	box-shadow: 0 14px 32px rgba(74, 52, 31, 0.2);
-}
-
 .picture-card__image {
 	object-fit: cover;
 	width: 100%;
