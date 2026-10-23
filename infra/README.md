@@ -107,6 +107,20 @@ opened on devices that never saw the gallery, so the 95-bit job id is the
 credential. It still honours the gallery's own switches, so turning downloads off
 retracts every link ever sent, and the job document expires after 7 days.
 
+**Two messages go out by hand**, both through `POST /api/admin/galleries/<gid>/share`
+and chosen by its `template` field. `online` is the gallery going up: the link, the
+password if one was just typed (it is only ever stored hashed, so the moment it is
+typed into the share panel is the one moment it can be mailed), and the expiry date.
+`delivery` is the handover once the edits are done: the link carries `?set=<sid>` so
+the client lands on the retouched tab rather than whichever one the manifest lists
+first, the invoice goes along as a PDF attachment, and the copy asks for a Google
+review. The attachment is why that one is the only message in the system built as
+raw MIME — SES's Simple content has no field for a file — and why the invoice is
+uploaded by presigned POST like a photo, then named back to the share call by key.
+It stays in the bucket afterwards: a re-send with no new file re-attaches whatever
+the last delivery used, which is recorded on the gallery as `delivery`, and only
+after the send actually succeeded.
+
 ### Link previews
 
 A gallery link is pasted into an RCS thread, a WhatsApp message, an Instagram DM.
@@ -476,6 +490,9 @@ media/g/<gid>/v/t|w/<pid>_<rev>.webp previews (signed cookies)
 media/g/<gid>/v/c/<pid>_<rev>.webp   unmarked cover, one per gallery
 media/g/<gid>/d/hd/<pid>_<rev>.jpg   marked HD downloads, mode `all` only (signed URLs)
 media/g/<gid>/d/zip/<hash>.zip       cached archives (expire at 30 days)
+invoices/<gid>/<file>.pdf            the invoice the delivery email attaches — kept
+                                     for re-sends, no lifecycle rule (it has to stay
+                                     readable), deleted with the gallery
 assets/watermark.png                 the mark
 ```
 

@@ -377,6 +377,26 @@
 	gap: 0.8rem;
 }
 
+/* The invoice picker. A file input cannot be styled past its own button, so it
+   keeps the frame .field gives every other control and that button is brought in
+   line separately — left as a native control, which is the one that says "nothing
+   chosen" in the browser's own words. */
+.admin-share__form input[type="file"] {
+	padding: 0.7rem 0.9rem;
+	font-size: 0.85rem;
+}
+
+.admin-share__form input[type="file"]::file-selector-button {
+	margin-right: 0.8rem;
+	padding: 0.35rem 0.8rem;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius-sm);
+	background: var(--surface);
+	color: var(--text);
+	font: inherit;
+	cursor: pointer;
+}
+
 .admin-selection__list {
 	margin: 0.4rem 0 0;
 	padding-left: 1.2rem;

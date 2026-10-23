@@ -90,7 +90,13 @@ export function GalleryPage() {
 	// makes it stale by derivation rather than through an effect that resets it.
 	// `undefined` means "whatever the manifest lists first", which is not the same as
 	// `null` — that one is the tab of photos belonging to no set.
-	const [tab, setTab] = useState({ slug, id: undefined });
+	//
+	// Seeded from `?set=` so the studio can send a link that opens on one category:
+	// the delivery email points at the set that was just retouched, which in a gallery
+	// of several tabs is not the one listed first. Read once, at mount, rather than
+	// tracked — the query string is where the visitor arrived, not where they are, and
+	// an id the manifest does not list falls through to the first tab below.
+	const [tab, setTab] = useState(() => ({ slug, id: new URLSearchParams(window.location.search).get("set") ?? undefined }));
 	// Who this browser belongs to, as far as the gallery knows. Favourites are filed
 	// under it, so nothing can be hearted before it is given.
 	const [email, setEmail] = useState(readVisitorEmail);

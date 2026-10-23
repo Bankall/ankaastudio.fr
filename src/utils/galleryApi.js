@@ -147,6 +147,14 @@ export const adminApi = {
 	// The set goes, its photos do not: they fall back to the gallery's settings.
 	deleteSet: (gid, sid) => request(`/api/admin/galleries/${gid}/sets/${sid}`, { method: "DELETE" }),
 
+	// The invoice a delivery email attaches: a presigned POST like a photo's, answering
+	// with the key the share call then names. One per gallery — the same filename
+	// overwrites — and it stays in the bucket so a re-send needs no second upload.
+	requestInvoiceUpload: (gid, file) => request(`/api/admin/galleries/${gid}/invoice`, { method: "POST", body: { name: file.name, size: file.size } }),
+
+	// payload: { template: "online" | "delivery", to, note?, password? (online),
+	// setId? + invoiceKey? (delivery) }. Omitting invoiceKey on a delivery re-sends
+	// the invoice the last one went out with.
 	share: (gid, payload) => request(`/api/admin/galleries/${gid}/share`, { method: "POST", body: payload }),
 	selection: gid => request(`/api/admin/galleries/${gid}/selection`),
 

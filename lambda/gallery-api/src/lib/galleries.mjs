@@ -38,6 +38,43 @@ export const zipKey = (gid, hash, suffix = "") => `media/g/${gid}/d/zip/${hash}$
 export const zipMarkerKey = (gid, hash) => `db/zips/${gid}/${hash}.json`;
 export const zipMarkerPrefix = gid => `db/zips/${gid}/`;
 
+// The invoice PDF a delivery email carries. Kept rather than discarded once it has
+// been sent, so re-sending the message does not mean finding the file again — and
+// deleted with the gallery, like everything else that is only about this shoot.
+//
+// Its own top-level prefix, not under media/ or originals/: every lifecycle rule on
+// this bucket is keyed on one of those, and an invoice has to stay in STANDARD. It
+// is read back out to be attached, and a Deep Archive copy would need a 48-hour
+// restore before any mail could leave.
+export const invoicePrefix = gid => `invoices/${gid}/`;
+export const invoiceKey = (gid, filename) => `invoices/${gid}/${filename}`;
+
+/**
+ * The uploaded name, reduced to something safe as both the last segment of a key
+ * and the filename on a MIME attachment.
+ *
+ * Accents are folded rather than dropped, so `Facture-Été.pdf` stays readable, and
+ * everything outside what survives becomes `_`: the separators that could walk out
+ * of the prefix, the quotes that could break out of the Content-Disposition header
+ * it is interpolated into, and the spaces some clients truncate a filename on.
+ *
+ * Being a pure function of the name is also what makes it a check: the share route
+ * re-derives the key from the one the browser sends back and compares, so the only
+ * keys it will read are the ones this API minted.
+ */
+export function invoiceFilename(name) {
+	const base = String(name || "")
+		.split(/[\\/]/)
+		.pop()
+		.normalize("NFD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.replace(/[^A-Za-z0-9._-]+/g, "_")
+		.replace(/^[._-]+/, "")
+		.slice(0, 120);
+
+	return /\.pdf$/i.test(base) ? base : `${base || "facture"}.pdf`;
+}
+
 export const WATERMARK_KEY = "assets/watermark.png";
 // The gallery's mode, and the override a set or the ungrouped remainder may carry
 // instead — null there means "whatever the gallery says". Unlike the download

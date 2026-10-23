@@ -48,7 +48,7 @@ Parameters:
     SenderEmail:
         Type: String
         Default: contact@ankaastudio.fr
-        Description: SES-verified sender used for "your gallery is ready" emails.
+        Description: SES-verified sender for the gallery, delivery and archive emails.
 
     SsmPrefix:
         Type: String
@@ -329,8 +329,12 @@ Resources:
                         Resource:
                             - !GetAtt GalleryZipperFunction.Arn
                             - !GetAtt GalleryProcessorFunction.Arn
+                      # SendRawEmail as well as SendEmail: the v2 API is one action
+                      # either way, but SES checks the raw permission when the call
+                      # carries Raw content — which the delivery mail does, because
+                      # that is the only form an invoice can be attached in.
                       - Effect: Allow
-                        Action: ses:SendEmail
+                        Action: [ses:SendEmail, ses:SendRawEmail]
                         Resource: "*"
                       # Archiving a gallery. S3CrudPolicy covers neither tagging nor
                       # restores: the tag is what the deep-archive lifecycle rule

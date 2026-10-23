@@ -6,13 +6,14 @@ import { freezeOriginals, originalsState, purgeDerivatives, thawOriginals } from
 import { clearAdminSession, issueAdminSession, issueSignedCookies, penalise, requireAdmin, SIGNED_COOKIE_TTL_SECONDS } from "../lib/auth.mjs";
 import { signedUrl } from "../lib/cfsign.mjs";
 import { markDownloadsSeen, readDownloadLog } from "../lib/downloads.mjs";
+import { deliveryEmail, galleryOnlineEmail } from "../lib/emails.mjs";
 import { badRequest, conflict, json, noContent, notFound, publicOrigin } from "../lib/http.mjs";
 import { galleryId, photoId, setId as newSetId, SLUG_PATTERN, slugify } from "../lib/ids.mjs";
-import { emailButton, emailLayout, emailNote, emailParagraph, emailQuote, emailValue, escapeHtml, sendEmail } from "../lib/mailer.mjs";
+import { sendEmail } from "../lib/mailer.mjs";
 import { hashPassword, verifyPassword } from "../lib/passwords.mjs";
 import { invokeProcessor } from "../lib/processor.mjs";
 import { getSecrets } from "../lib/secrets.mjs";
-import { deleteKeys, deletePrefix, getJson, listKeys, mapWithLimit, objectExists, putJson, s3, updateJson } from "../lib/store.mjs";
+import { deleteKeys, deletePrefix, getBytes, getJson, listKeys, mapWithLimit, objectExists, putJson, s3, updateJson } from "../lib/store.mjs";
 import { bool, email, isoDate, oneOf, str, stringArray } from "../lib/validate.mjs";
 import {
 	adminProjection,
@@ -23,6 +24,9 @@ import {
 	galleryKey,
 	hdKey,
 	INDEX_KEY,
+	invoiceFilename,
+	invoiceKey,
+	invoicePrefix,
 	MAX_SETS,
 	mediaPrefix,
 	newGallery,
@@ -53,6 +57,10 @@ import {
 // Big enough for an uncompressed TIFF straight off a body; small enough that a
 // mis-picked video file is rejected before it costs any transfer.
 const MAX_UPLOAD_BYTES = 120 * 1024 * 1024;
+// An invoice is a page or two of PDF. The ceiling is here because this one goes out
+// inside an email rather than staying in the bucket: SES refuses a message over
+// 40 MB, and base64 costs a third on the way in.
+const MAX_INVOICE_BYTES = 10 * 1024 * 1024;
 const UPLOAD_URL_TTL_SECONDS = 15 * 60;
 
 // How long a photo may sit marked "processing" before reconcile treats it as
@@ -434,6 +442,7 @@ async function deleteGallery({ request, params }) {
 	await deletePrefix(originalPrefix(gallery.id));
 	await deletePrefix(sidecarPrefix(gallery.id));
 	await deletePrefix(zipMarkerPrefix(gallery.id));
+	await deletePrefix(invoicePrefix(gallery.id));
 	await deleteKeys([galleryKey(gallery.id), selectionKey(gallery.id)]);
 
 	await updateJson(
@@ -519,6 +528,51 @@ async function createUploads({ request, params }) {
 	);
 
 	return json(200, { uploads });
+}
+
+/**
+ * The same presigned POST, for the one file that is not a photograph: the invoice a
+ * delivery email attaches.
+ *
+ * Its own route rather than a mode of the one above, because nothing else about it
+ * is the same — a PDF where that one takes images, one file where that one takes a
+ * batch, no pid, no processor, and a key the client sends back by name rather than
+ * one the API keeps in the record.
+ *
+ * Only ever one per gallery: the key is the filename, so a second upload of the same
+ * invoice overwrites rather than accumulates, and the panel's "already uploaded" is
+ * whatever the last send recorded.
+ */
+async function createInvoiceUpload({ request, params }) {
+	await requireAdmin(request);
+	const { data: gallery } = await loadGallery(params.gid);
+
+	const name = str(request.body?.name, "nom de fichier", { max: 255, required: true, allowEmpty: false });
+	const filename = invoiceFilename(name);
+
+	if (!name.toLowerCase().endsWith(".pdf")) {
+		throw badRequest("La facture doit être un fichier PDF.");
+	}
+
+	const size = Number(request.body?.size ?? 0);
+	if (!Number.isFinite(size) || size <= 0 || size > MAX_INVOICE_BYTES) {
+		throw badRequest(`La facture dépasse la taille maximale de ${Math.round(MAX_INVOICE_BYTES / 1024 / 1024)} Mo.`);
+	}
+
+	const key = invoiceKey(gallery.id, filename);
+
+	const presigned = await createPresignedPost(s3, {
+		Bucket: process.env.MEDIA_BUCKET,
+		Key: key,
+		Expires: UPLOAD_URL_TTL_SECONDS,
+		Conditions: [
+			["content-length-range", 1, MAX_INVOICE_BYTES],
+			["eq", "$Content-Type", "application/pdf"]
+		],
+		Fields: { "Content-Type": "application/pdf" }
+	});
+
+	return json(200, { key, filename, url: presigned.url, fields: presigned.fields });
 }
 
 /**
@@ -1151,54 +1205,135 @@ async function reprocess({ request, params }) {
 
 // --- sharing ---------------------------------------------------------------
 
+// The two messages the photographer sends by hand, at the two moments a client
+// hears from the studio: `online` when the gallery goes up, and `delivery` when the
+// retouched set is handed over with its invoice. One route for both — same
+// recipient, same note, same "is it published yet" — and the copy in lib/emails.mjs.
+const SHARE_TEMPLATES = ["online", "delivery"];
+
 async function share({ request, params }) {
 	await requireAdmin(request);
 	const { data: gallery } = await loadGallery(params.gid);
 
+	// Defaulted rather than required: the panel always sends one, but a request from
+	// before the second template existed means the first.
+	const template = oneOf(request.body?.template, "modèle", SHARE_TEMPLATES) ?? "online";
 	const recipient = email(request.body?.to ?? gallery.clientEmail, "destinataire", { required: true });
-	const password = str(request.body?.password, "mot de passe", { max: 200 });
 	const note = str(request.body?.note, "message", { max: 2000 });
 	const origin = publicOrigin(request);
-	const link = `${origin}/gallery/${gallery.slug}`;
 
 	if (gallery.status !== "published") {
 		throw badRequest("Publiez la galerie avant de l'envoyer au client.");
 	}
 
-	const lines = [
-		`Bonjour ${gallery.clientName || ""}`.trim() + ",",
-		"",
-		`Votre galerie « ${gallery.title} » est en ligne :`,
-		link,
-		...(password ? ["", `Mot de passe : ${password}`] : []),
-		...(note ? ["", note] : []),
-		...(gallery.expiresAt ? ["", `La galerie reste accessible jusqu'au ${new Date(gallery.expiresAt).toLocaleDateString("fr-FR")}.`] : []),
-		"",
-		"À très bientôt,",
-		"Ankaa Studio"
-	];
+	if (template === "delivery") {
+		return await shareDelivery({ gallery, request, recipient, note, origin });
+	}
 
 	await sendEmail({
 		to: recipient,
-		subject: `Votre galerie « ${gallery.title} » est en ligne`,
-		text: lines.join("\n"),
-		html: emailLayout({
-			label: "Galerie en ligne",
-			heading: "Votre galerie est en ligne",
-			preview: `Vos photos vous attendent dans la galerie « ${gallery.title} ».`,
-			origin,
-			inner: [
-				emailParagraph(`Bonjour ${escapeHtml(gallery.clientName || "")},`),
-				emailParagraph(`Vos photos vous attendent dans la galerie <strong>${escapeHtml(gallery.title)}</strong>.`),
-				note ? emailQuote(note) : "",
-				password ? emailValue("Mot de passe", password) : "",
-				emailButton(link, "Voir la galerie"),
-				gallery.expiresAt ? emailNote(`Galerie accessible jusqu'au ${escapeHtml(new Date(gallery.expiresAt).toLocaleDateString("fr-FR"))}.`) : ""
-			].join("")
+		...galleryOnlineEmail({
+			gallery,
+			link: `${origin}/gallery/${gallery.slug}`,
+			// Typed here rather than read from the record: it is only ever stored as a
+			// hash, so this is the one moment it can be put in an email.
+			password: str(request.body?.password, "mot de passe", { max: 200 }),
+			note,
+			origin
 		})
 	});
 
-	return json(200, { ok: true, sentTo: recipient });
+	return json(200, { ok: true, sentTo: recipient, template });
+}
+
+/**
+ * The second message: the edits are done, here is the set, here is the invoice.
+ *
+ * The link carries the set so the client lands on the retouched tab rather than on
+ * whichever one the gallery lists first — `?set=` is read by the gallery page on
+ * load. A gallery that was never split into tabs sends no set and links to the whole
+ * of it, which is the same thing in that case.
+ */
+async function shareDelivery({ gallery, request, recipient, note, origin }) {
+	const setId = str(request.body?.setId, "catégorie", { max: 60 });
+	const set = setId ? (gallery.sets ?? []).find(candidate => candidate.id === setId) : null;
+
+	if (setId && !set) {
+		throw badRequest("Cette catégorie n'existe plus dans la galerie.");
+	}
+
+	// The invoice the panel just uploaded, or — when it sent no key — the one the last
+	// delivery went out with, so re-sending the message does not mean finding the file
+	// again.
+	const requested = str(request.body?.invoiceKey, "facture", { max: 400 });
+	const invoice = await readInvoice(gallery.id, requested ?? gallery.delivery?.invoiceKey);
+
+	await sendEmail({
+		to: recipient,
+		...deliveryEmail({
+			gallery,
+			// The set reaches the client through the link and nowhere else: the copy
+			// does not name which one, it opens on it.
+			link: `${origin}/gallery/${gallery.slug}${set ? `?set=${encodeURIComponent(set.id)}` : ""}`,
+			note,
+			origin
+		}),
+		attachments: [{ filename: invoice.filename, contentType: "application/pdf", content: invoice.content }]
+	});
+
+	// Written only now, and only this field: a record saying a delivery went out when
+	// the send threw would offer the panel a re-send of something the client never
+	// got. Through updateJson rather than saveGallery because the read above may be
+	// minutes old by the time the mail is away — losing an If-Match race here would
+	// report a failure for a message that has already left — and because nothing in
+	// the index mirrors this, so there is no summary row to keep in step.
+	await updateJson(galleryKey(gallery.id), record => {
+		record.delivery = {
+			sentAt: new Date().toISOString(),
+			to: recipient,
+			invoiceKey: invoice.key,
+			invoiceName: invoice.filename,
+			setId: set?.id ?? null
+		};
+
+		return record;
+	});
+
+	return json(200, { ok: true, sentTo: recipient, template: "delivery", invoiceName: invoice.filename });
+}
+
+/**
+ * The PDF the delivery email will carry, read back out of the bucket.
+ *
+ * The key is re-derived from its own filename and compared rather than trusted: it
+ * comes back from the browser between two requests, and this is the only place in
+ * the API where a caller names an object to be read and sent somewhere. Anything
+ * that is not a key this API minted for this gallery fails the comparison.
+ */
+async function readInvoice(gid, key) {
+	const prefix = invoicePrefix(gid);
+
+	if (!key) {
+		throw badRequest("Joignez la facture au format PDF.");
+	}
+
+	const filename = invoiceFilename(String(key).slice(prefix.length));
+
+	if (!String(key).startsWith(prefix) || invoiceKey(gid, filename) !== key) {
+		throw badRequest("Facture introuvable.");
+	}
+
+	const object = await getBytes(key);
+
+	if (!object) {
+		throw badRequest("La facture n'est plus sur le serveur. Renvoyez le fichier.");
+	}
+
+	if (object.bytes.length > MAX_INVOICE_BYTES) {
+		throw badRequest(`La facture dépasse la taille maximale de ${Math.round(MAX_INVOICE_BYTES / 1024 / 1024)} Mo.`);
+	}
+
+	return { key, filename, content: object.bytes };
 }
 
 // --- download notifications ------------------------------------------------
@@ -1269,6 +1404,7 @@ export const adminRoutes = [
 	["PATCH", "/api/admin/galleries/:gid", updateGallery],
 	["DELETE", "/api/admin/galleries/:gid", deleteGallery],
 	["POST", "/api/admin/galleries/:gid/uploads", createUploads],
+	["POST", "/api/admin/galleries/:gid/invoice", createInvoiceUpload],
 	["POST", "/api/admin/galleries/:gid/process", processPhotos],
 	["GET", "/api/admin/galleries/:gid/pending", pendingPhotos],
 	["POST", "/api/admin/galleries/:gid/reconcile", reconcile],

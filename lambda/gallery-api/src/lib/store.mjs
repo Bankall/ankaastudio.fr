@@ -50,6 +50,28 @@ export async function getJson(key) {
 }
 
 /**
+ * Returns `{ bytes, contentType }`, or null when the key does not exist.
+ *
+ * The one read that pulls an object's bytes into this function rather than signing
+ * a URL for them: an email attachment has to be in the message itself. Only ever
+ * called on objects this API wrote and bounded in size on the way in — everything
+ * a client fetches goes out as a presigned URL or through CloudFront instead.
+ */
+export async function getBytes(key) {
+	try {
+		const result = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+
+		return { bytes: await result.Body.transformToByteArray(), contentType: result.ContentType || "application/octet-stream" };
+	} catch (error) {
+		if (isNotFound(error)) {
+			return null;
+		}
+
+		throw error;
+	}
+}
+
+/**
  * Writes a JSON document.
  *   etag: "<etag>" → only if unchanged since that read (If-Match)
  *   etag: null     → only if it does not exist yet (If-None-Match: *)
