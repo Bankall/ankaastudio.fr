@@ -38,14 +38,10 @@ const HD_MAX_EDGE = 6000;
 // and small enough that a crawler on a timeout still gets the whole file.
 const SHARE_WIDTH = 1200;
 
-// The mark spans nearly the whole frame — it is a download deterrent, not a
-// signature — but stops short of the edges, because the PNG carries no safe zone
-// of its own and artwork bleeding off the frame looks like a mistake.
-const WATERMARK_WIDTH_RATIO = 0.9;
-
-// Applied on top of whatever alpha the PNG already carries, so the mark can be
-// re-tuned here without re-exporting artwork.
-const WATERMARK_OPACITY = 0.6;
+// The mark spans the whole frame — it is a download deterrent, not a signature.
+// The PNG carries its own margin, so it needs no inset here, and its own alpha,
+// so it needs no fading either.
+const WATERMARK_WIDTH_RATIO = 1;
 
 // What each preview quality mode is worth in WebP quality, for the thumbnail and the
 // web preview respectively. Only the compression moves: the widths above are what the
@@ -144,10 +140,13 @@ async function loadWatermarkSource() {
  * A composite descriptor stretching the mark across the derivative, centred.
  *
  * The mark is a download deterrent rather than an artist's signature — that
- * belongs in Lightroom — so it spans most of the width in the middle of the
- * frame, where nothing can be cropped around it. It is scaled up when the source
- * PNG is narrower than the derivative; `fit: "inside"` keeps its aspect ratio
- * and, on a frame wider than the mark itself, stops it overflowing the height.
+ * belongs in Lightroom — so it spans the full width in the middle of the frame,
+ * where nothing can be cropped around it. It is scaled up when the source PNG is
+ * narrower than the derivative; `fit: "inside"` keeps its aspect ratio and, on a
+ * frame wider than the mark itself, stops it overflowing the height.
+ *
+ * The PNG is used exactly as exported: its own margin is the safe zone and its
+ * own alpha is the final opacity.
  *
  * Pre-scaled per derivative size and cached in module scope, so a warm container
  * resizes the logo once rather than once per photo.
@@ -168,28 +167,7 @@ async function watermarkOverlay(width, height) {
 			.png()
 			.toBuffer({ resolveWithObject: true });
 
-		// `dest-in` keeps the mark only where the mask has alpha, which for a
-		// uniform mask means multiplying the mark's own alpha by WATERMARK_OPACITY.
-		// sharp has no opacity option on a composite, and dimming the colour
-		// channels instead would grey the artwork rather than fade it.
-		const faded = await sharp(scaled.data)
-			.composite([
-				{
-					input: {
-						create: {
-							width: scaled.info.width,
-							height: scaled.info.height,
-							channels: 4,
-							background: { r: 0, g: 0, b: 0, alpha: WATERMARK_OPACITY }
-						}
-					},
-					blend: "dest-in"
-				}
-			])
-			.png()
-			.toBuffer({ resolveWithObject: true });
-
-		cacheOverlay(cacheKey, faded);
+		cacheOverlay(cacheKey, scaled);
 	}
 
 	const overlay = overlayCache.get(cacheKey);

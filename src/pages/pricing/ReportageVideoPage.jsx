@@ -49,7 +49,7 @@ export function ReportageVideoPage() {
 						<div className='package-card__informations'>
 							<p>Uniquement en complément d’une formule photo</p>
 						</div>
-						<div className='package-card__price'>70€</div>
+						<div className='package-card__price'>50€</div>
 					</PackageCard>
 
 					<PackageCard video='/video/video-report.mp4' alt='Le reportage vidéo' odd>
@@ -66,7 +66,7 @@ export function ReportageVideoPage() {
 							<li>Dérushage, montage, étalonnage et musique</li>
 							<li>Livraison numérique en haute définition</li>
 						</ul>
-						<div className='package-card__price'>150€</div>
+						<div className='package-card__price'>120€</div>
 					</PackageCard>
 				</div>
 			</section>

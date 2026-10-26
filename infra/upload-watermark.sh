@@ -2,11 +2,11 @@
 #
 # Installs the watermark the processor composites onto previews.
 #
-# Supply a PNG with a transparent background and light/white artwork, opaque: the
-# processor fades it to WATERMARK_OPACITY itself, and any alpha baked in here is
-# multiplied on top of that. It is stretched across most of the width of every
-# derivative it marks, centred, so make it wide and short — 3000px or more on the
-# long edge keeps it crisp on 2048px previews.
+# Supply a PNG with a transparent background and light/white artwork, already at
+# the opacity you want: the processor composites it as-is, so bake both the fade
+# and whatever margin the artwork needs into the file. It is stretched across the
+# full width of every derivative it marks, centred, so make it wide and short —
+# 3000px or more on the long edge keeps it crisp on 2048px previews.
 #
 # Usage: ./upload-watermark.sh path/to/logo.png
 
