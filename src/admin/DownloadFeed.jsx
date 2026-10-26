@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { adminApi } from "../utils/galleryApi.js";
+import { SHARE_TEMPLATE_LABELS } from "../utils/shareTemplates.js";
 
 // Downloads are not urgent news; a minute of latency is invisible and the feed is
 // one small S3 GET.
@@ -10,7 +11,8 @@ const KIND_LABELS = {
 	set: "a téléchargé une catégorie",
 	selection: "a téléchargé sa sélection",
 	photo: "a téléchargé une photo",
-	favourite: "a commencé une sélection"
+	favourite: "a commencé une sélection",
+	opened: "a ouvert l’e-mail"
 };
 
 const formatMoment = value => (value ? new Date(value).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "");
@@ -33,6 +35,11 @@ function describe(event) {
 
 	if (event.kind === "photo" && event.photoName) {
 		return `${action} — ${event.photoName}`;
+	}
+
+	// Which of the two messages, since both go to the same address.
+	if (event.kind === "opened" && SHARE_TEMPLATE_LABELS[event.template]) {
+		return `${action} « ${SHARE_TEMPLATE_LABELS[event.template]} »`;
 	}
 
 	return action;

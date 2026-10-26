@@ -8,7 +8,7 @@ import { signedUrl } from "../lib/cfsign.mjs";
 import { markDownloadsSeen, readDownloadLog } from "../lib/downloads.mjs";
 import { deliveryEmail, galleryOnlineEmail } from "../lib/emails.mjs";
 import { badRequest, conflict, json, noContent, notFound, publicOrigin } from "../lib/http.mjs";
-import { galleryId, photoId, setId as newSetId, SLUG_PATTERN, slugify } from "../lib/ids.mjs";
+import { galleryId, photoId, setId as newSetId, shareId, SLUG_PATTERN, slugify } from "../lib/ids.mjs";
 import { sendEmail } from "../lib/mailer.mjs";
 import { hashPassword, verifyPassword } from "../lib/passwords.mjs";
 import { invokeProcessor } from "../lib/processor.mjs";
@@ -28,9 +28,11 @@ import {
 	invoiceKey,
 	invoicePrefix,
 	MAX_SETS,
+	MAX_SHARES,
 	mediaPrefix,
 	newGallery,
 	newSet,
+	newShare,
 	originalKey,
 	originalPrefix,
 	pendingPhoto,
@@ -1226,10 +1228,47 @@ async function share({ request, params }) {
 		throw badRequest("Publiez la galerie avant de l'envoyer au client.");
 	}
 
-	if (template === "delivery") {
-		return await shareDelivery({ gallery, request, recipient, note, origin });
-	}
+	// This send, as the record will remember it. Minted before the mail goes out
+	// because its id is in the mail: the HTML version loads one pixel from
+	// /api/open/<gid>/<id> (routes/tracking.mjs), and that id is what tells "this
+	// message was opened" from "the gallery was visited". One recipient per message,
+	// so an open needs no further attribution than the share it lands on.
+	const sent = newShare({ id: shareId(), template, to: recipient });
+	const trackingUrl = `${origin}/api/open/${gallery.id}/${sent.id}`;
 
+	const delivery =
+		template === "delivery" ?
+			await sendDelivery({ gallery, request, recipient, note, origin, trackingUrl })
+		:	await sendOnline({ gallery, request, recipient, note, origin, trackingUrl });
+
+	// Written only now: a record saying a message went out when the send threw would
+	// offer the panel a re-send of something the client never got, and wait for an
+	// open that can never come. Through updateJson rather than saveGallery because
+	// the read above may be minutes old by the time the mail is away — losing an
+	// If-Match race here would report a failure for a message that has already left
+	// — and because nothing in the index mirrors any of this, so there is no summary
+	// row to keep in step.
+	await updateJson(galleryKey(gallery.id), record => {
+		record.shares = [sent, ...(record.shares ?? [])].slice(0, MAX_SHARES);
+
+		if (delivery) {
+			record.delivery = {
+				sentAt: sent.sentAt,
+				to: recipient,
+				invoiceKey: delivery.invoice.key,
+				invoiceName: delivery.invoice.filename,
+				setId: delivery.setId
+			};
+		}
+
+		return record;
+	});
+
+	return json(200, { ok: true, sentTo: recipient, template, share: sent, ...(delivery ? { invoiceName: delivery.invoice.filename } : {}) });
+}
+
+/** The first message: the gallery is up, here is the link. Nothing to record beyond the send. */
+async function sendOnline({ gallery, request, recipient, note, origin, trackingUrl }) {
 	await sendEmail({
 		to: recipient,
 		...galleryOnlineEmail({
@@ -1239,11 +1278,12 @@ async function share({ request, params }) {
 			// hash, so this is the one moment it can be put in an email.
 			password: str(request.body?.password, "mot de passe", { max: 200 }),
 			note,
-			origin
+			origin,
+			trackingUrl
 		})
 	});
 
-	return json(200, { ok: true, sentTo: recipient, template });
+	return null;
 }
 
 /**
@@ -1253,8 +1293,11 @@ async function share({ request, params }) {
  * whichever one the gallery lists first — `?set=` is read by the gallery page on
  * load. A gallery that was never split into tabs sends no set and links to the whole
  * of it, which is the same thing in that case.
+ *
+ * Answers with what the record keeps of a delivery — the invoice that went and the
+ * set it opened on — for share() to write once the message is away.
  */
-async function shareDelivery({ gallery, request, recipient, note, origin }) {
+async function sendDelivery({ gallery, request, recipient, note, origin, trackingUrl }) {
 	const setId = str(request.body?.setId, "catégorie", { max: 60 });
 	const set = setId ? (gallery.sets ?? []).find(candidate => candidate.id === setId) : null;
 
@@ -1276,30 +1319,13 @@ async function shareDelivery({ gallery, request, recipient, note, origin }) {
 			// does not name which one, it opens on it.
 			link: `${origin}/gallery/${gallery.slug}${set ? `?set=${encodeURIComponent(set.id)}` : ""}`,
 			note,
-			origin
+			origin,
+			trackingUrl
 		}),
 		attachments: [{ filename: invoice.filename, contentType: "application/pdf", content: invoice.content }]
 	});
 
-	// Written only now, and only this field: a record saying a delivery went out when
-	// the send threw would offer the panel a re-send of something the client never
-	// got. Through updateJson rather than saveGallery because the read above may be
-	// minutes old by the time the mail is away — losing an If-Match race here would
-	// report a failure for a message that has already left — and because nothing in
-	// the index mirrors this, so there is no summary row to keep in step.
-	await updateJson(galleryKey(gallery.id), record => {
-		record.delivery = {
-			sentAt: new Date().toISOString(),
-			to: recipient,
-			invoiceKey: invoice.key,
-			invoiceName: invoice.filename,
-			setId: set?.id ?? null
-		};
-
-		return record;
-	});
-
-	return json(200, { ok: true, sentTo: recipient, template: "delivery", invoiceName: invoice.filename });
+	return { invoice, setId: set?.id ?? null };
 }
 
 /**

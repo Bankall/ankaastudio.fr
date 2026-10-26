@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { adminApi, uploadToS3 } from "../utils/galleryApi.js";
+import { SHARE_TEMPLATE_LABELS } from "../utils/shareTemplates.js";
 
 /**
  * The two messages the client gets, in the order they are sent: the gallery going
@@ -13,19 +14,25 @@ import { adminApi, uploadToS3 } from "../utils/galleryApi.js";
 const TEMPLATES = [
 	{
 		id: "online",
-		label: "Galerie en ligne",
+		label: SHARE_TEMPLATE_LABELS.online,
 		hint: "Le lien vers la galerie, le mot de passe s’il y en a un, et la date de fin d’accès."
 	},
 	{
 		id: "delivery",
-		label: "Retouches terminées",
+		label: SHARE_TEMPLATE_LABELS.delivery,
 		hint: "Le lien vers la catégorie retouchée, la facture en pièce jointe et la demande d’avis Google."
 	}
 ];
 
 const formatDate = value => new Date(value).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+const formatMoment = value => new Date(value).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
 
-export function SharePanel({ gallery, publicUrl }) {
+/**
+ * `onRefresh` re-reads the gallery, which is how the list of sent messages learns
+ * that one has been opened: the open lands on the record from the client's mail
+ * client, with nothing to tell this panel about it.
+ */
+export function SharePanel({ gallery, publicUrl, onRefresh }) {
 	const [template, setTemplate] = useState("online");
 	const [to, setTo] = useState(gallery.clientEmail ?? "");
 	// Typed here rather than read from the record on purpose — it is stored only as a
@@ -41,6 +48,10 @@ export function SharePanel({ gallery, publicUrl }) {
 	// next read of the gallery: without it, sending a delivery and then sending it
 	// again to a second address would ask for the PDF a second time.
 	const [sent, setSent] = useState("");
+	// The sends made from this panel, for the same reason: the record's list catches
+	// up on the next read, and until then the message that just left would be missing
+	// from a list that says what has been sent.
+	const [justSent, setJustSent] = useState([]);
 	const [status, setStatus] = useState("idle");
 	const [message, setMessage] = useState("");
 	const [copied, setCopied] = useState(false);
@@ -57,6 +68,10 @@ export function SharePanel({ gallery, publicUrl }) {
 	const busy = status === "sending" || status === "uploading";
 	const unpublished = gallery.status !== "published";
 	const missingInvoice = template === "delivery" && !invoice && !storedInvoice;
+	// The record's list, newest first, with this session's sends ahead of it until the
+	// record has them too — matched by id, so a refresh does not list one twice.
+	const recorded = gallery.shares ?? [];
+	const shares = [...justSent.filter(share => !recorded.some(known => known.id === share.id)), ...recorded];
 
 	const handleCopy = async () => {
 		try {
@@ -109,6 +124,10 @@ export function SharePanel({ gallery, publicUrl }) {
 
 			if (result.invoiceName) {
 				setSent(result.invoiceName);
+			}
+
+			if (result.share) {
+				setJustSent(current => [result.share, ...current]);
 			}
 		} catch (failure) {
 			setStatus("idle");
@@ -233,6 +252,44 @@ export function SharePanel({ gallery, publicUrl }) {
 					</p>
 				:	null}
 			</form>
+
+			{/* Every message sent, newest first, and whether the client has opened it. The
+			    open is detected by a pixel in the mail, so the state is only as reliable as
+			    the client's mail client lets it be — said under the list, once. */}
+			{shares.length > 0 ?
+				<div className='admin-share__history'>
+					<div className='admin-share__history-header'>
+						<h3 className='admin-share__history-title'>Messages envoyés</h3>
+						{onRefresh ?
+							<button type='button' className='button-secondary' onClick={onRefresh}>
+								Actualiser
+							</button>
+						:	null}
+					</div>
+
+					<ul className='admin-share__history-list'>
+						{shares.map(share => (
+							<li key={share.id}>
+								<strong>{SHARE_TEMPLATE_LABELS[share.template] ?? share.template}</strong>
+								<span className='admin-share__history-meta'>
+									à {share.to}, le {formatMoment(share.sentAt)}
+								</span>
+								{share.openedAt ?
+									<span className='admin-share__opened'>
+										Ouvert le {formatMoment(share.openedAt)}
+										{share.opens > 1 ? ` (${share.opens} fois)` : ""}
+									</span>
+								:	<span className='admin-share__unopened'>Pas encore ouvert</span>}
+							</li>
+						))}
+					</ul>
+
+					<p className='admin-hint'>
+						L’ouverture est détectée par une image invisible dans le message : une messagerie qui bloque les images ne la signalera jamais, et certaines (Apple Mail
+						notamment) la chargent dès la réception. Un indice, pas une preuve.
+					</p>
+				</div>
+			:	null}
 		</div>
 	);
 }

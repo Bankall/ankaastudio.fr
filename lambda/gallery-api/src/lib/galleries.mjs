@@ -143,6 +143,9 @@ export function newGallery({ id, slug, title, clientName = "", clientEmail = "",
 		expiresAt: null,
 		sets: [],
 		photos: [],
+		// The messages the share panel has sent, newest first, each with whether it
+		// has been opened. See newShare(). Absent on older records, read as empty.
+		shares: [],
 		createdAt: now,
 		updatedAt: now
 	};
@@ -191,6 +194,24 @@ export function newSet({ id, title, hdEnabled = true }) {
 		hdEnabled: Boolean(hdEnabled),
 		watermark: null
 	};
+}
+
+// How many sent messages a gallery remembers. The panel shows whether each was
+// opened; a gallery mailed twenty times has long stopped needing to know about the
+// first, and the pixel of a message that has fallen off the end records nothing.
+export const MAX_SHARES = 20;
+
+/**
+ * One message sent from the share panel, as the gallery remembers it.
+ *
+ * `id` is in the mail itself, as the URL of the pixel its HTML loads, which is what
+ * lets an open be filed under this send rather than under the gallery. `openedAt` is
+ * the first load and `lastOpenedAt` the latest; `opens` counts them all — a number a
+ * mail client that prefetches images inflates, so the first is what the panel leads
+ * with.
+ */
+export function newShare({ id, template, to }) {
+	return { id, template, to, sentAt: new Date().toISOString(), openedAt: null, lastOpenedAt: null, opens: 0 };
 }
 
 /**

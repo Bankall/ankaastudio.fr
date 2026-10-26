@@ -121,6 +121,44 @@ It stays in the bucket afterwards: a re-send with no new file re-attaches whatev
 the last delivery used, which is recorded on the gallery as `delivery`, and only
 after the send actually succeeded.
 
+**Every message the panel sends is remembered on the gallery as `shares`** — twenty
+at most, newest first — and its HTML loads a 1×1 pixel from
+`GET /api/open/<gid>/<share id>`, the one route a mail client calls by itself. It
+sits outside every gate (`routes/tracking.mjs`) and answers the same transparent GIF
+whatever it is asked, so the 95-bit share id is a credential that unlocks nothing.
+The first load stamps `openedAt` on that share and posts an *a ouvert l'e-mail* event
+to the activity feed; later loads only count. The share panel lists the sends with
+their open state. Read it as a hint, not a receipt: a client whose mail client blocks
+remote images never registers, and one whose mail client prefetches them (Apple
+Mail's privacy protection) registers at delivery, before anyone has read a word.
+
+### Email deliverability
+
+The gallery mails go out through SES from `contact@ankaastudio.fr`, a mailbox that
+lives at OVH. For a receiving server to trust them, three signals have to line up on
+the domain, and `infra/setup-mail-dns.sh` puts them there — Route 53, same account,
+run once (`--dry-run` shows the records without writing them):
+
+| Signal        | Records                                                                                                                                     | Why                                                                                                                                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DKIM          | three `<token>._domainkey` CNAMEs → `dkim.amazonses.com`                                                                                    | SES signs every message as `ankaastudio.fr`. Already in place.                                                                                                                                      |
+| SPF, aligned  | `mail.ankaastudio.fr` MX → `feedback-smtp.eu-west-1.amazonses.com` and TXT `v=spf1 include:amazonses.com ~all`; SES MAIL FROM set to that subdomain | Without a custom MAIL FROM the envelope sender is `*.amazonses.com`: SPF passes, but for Amazon's domain rather than ours, so it does not *align* with From and DMARC cannot count it.           |
+| DMARC         | `_dmarc` TXT `v=DMARC1; p=none; rua=mailto:…`                                                                                               | Gmail, Yahoo and La Poste now expect a policy to exist. `none` reports without acting; raise it to `quarantine` (`DMARC_POLICY=quarantine ./infra/setup-mail-dns.sh`) once the reports are clean — the OVH mailbox sends under the same domain and has to pass too. |
+
+The root SPF also gains `include:amazonses.com` beside OVH's, which covers the
+fallback SES takes if the MAIL FROM MX ever fails to resolve.
+
+The messages themselves do their part: a display name on From (`Ankaa Studio
+<contact@…>`), a plain-text part beside the HTML, a `Date` header on the raw path,
+and nothing fetched remotely but the open pixel. The one thing left that filters
+dislike is the `share.google` short link the delivery mail asks for a review with:
+shorteners are a known spam signal, and the Business Profile's own
+`https://g.page/r/…/review` URL would be the better link — swap `GOOGLE_REVIEW_URL`
+in `lib/emails.mjs` once you have it. Beyond that it is the shared SES IP pool's
+reputation and the recipient's own rules; a client who finds a message in spam
+should mark it as not spam and add the sender to their contacts, which teaches their
+provider for the next one.
+
 ### Link previews
 
 A gallery link is pasted into an RCS thread, a WhatsApp message, an Instagram DM.
@@ -505,6 +543,8 @@ assets/watermark.png                 the mark
 | ZIP job reports `failed`                  | Check `ankaa-gallery-zipper` logs; the DLQ `ankaa-gallery-zipper-dlq` holds the payload. |
 | `409 Modification concurrente`            | Two admin tabs wrote at once. The retry is automatic; a visible 409 means it lost six times. |
 | Share email not delivered                 | `SENDER_EMAIL` is not a verified SES identity: `aws sesv2 create-email-identity --email-identity contact@ankaastudio.fr --profile bankall`. (This account already has SES production access, so recipients do *not* need verifying.) |
+| Share email lands in the client's spam folder | `aws sesv2 get-email-identity --email-identity ankaastudio.fr --profile bankall` must show `DkimAttributes.Status` *and* `MailFromAttributes.MailFromDomainStatus` as `SUCCESS`, and `_dmarc.ankaastudio.fr` must answer a TXT. Anything missing: `./infra/setup-mail-dns.sh`. See [Email deliverability](#email-deliverability). |
+| A sent message never shows as opened      | The client's mail client blocks remote images, or they read the plain-text part. Nothing to fix: the pixel is a hint. If *no* message ever registers, check that `/api/open/<gid>/<id>` answers a GIF through CloudFront — the `/api/*` behaviour must forward the request uncached. |
 | Admin login always fails after bootstrap  | `admin-password` SSM parameter written under a different `SsmPrefix` than the stack uses. |
 | `index.handler is undefined` at runtime   | The `{ "type": "commonjs" }` marker `build.sh` writes into each `build/<fn>/` is missing, so Node reads the repo root's `"type": "module"` and parses the CJS bundle as ESM. |
 | Every `/api/*` call 403s with *"Forbidden … Function URL authorization"* | CloudFront is missing the `lambda:InvokeFunction` grant. `InvokeFunctionUrl` alone is not enough. |

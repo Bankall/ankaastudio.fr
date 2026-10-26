@@ -4,15 +4,17 @@
 // CloudFront distribution that also serves the site and the media — and through
 // /gallery/*, which is a page rather than an API call and is here for the one
 // reason given in routes/preview.mjs. Being same-origin means there is no CORS
-// layer here at all.
+// layer here at all — the one caller that is not the site, a mail client loading
+// the open pixel of routes/tracking.mjs, asks for an image and needs none.
 
 import { ConflictError } from "./lib/store.mjs";
 import { createRouter, HttpError, json, parseRequest } from "./lib/http.mjs";
 import { adminRoutes } from "./routes/admin.mjs";
 import { clientRoutes } from "./routes/client.mjs";
 import { previewRoutes } from "./routes/preview.mjs";
+import { trackingRoutes } from "./routes/tracking.mjs";
 
-const route = createRouter([...adminRoutes, ...clientRoutes, ...previewRoutes]);
+const route = createRouter([...adminRoutes, ...clientRoutes, ...previewRoutes, ...trackingRoutes]);
 
 export const handler = async event => {
 	let request;

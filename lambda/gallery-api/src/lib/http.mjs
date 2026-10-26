@@ -123,6 +123,28 @@ export function noContent({ cookies } = {}) {
 	};
 }
 
+// A transparent 1×1 GIF — the smallest valid image there is, 42 bytes — as base64,
+// which is the form a Function URL wants a binary body in.
+const PIXEL_GIF = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+/**
+ * The open pixel's answer. Never cached, at the edge or in the mail client: every
+ * load is meant to reach the Lambda, and a client that kept a copy would report one
+ * open for a message re-read every day.
+ */
+export function gif() {
+	return {
+		statusCode: 200,
+		headers: {
+			"content-type": "image/gif",
+			"cache-control": "no-store, private, max-age=0",
+			"x-content-type-options": "nosniff"
+		},
+		isBase64Encoded: true,
+		body: PIXEL_GIF
+	};
+}
+
 /** 302 to a signed URL, so the link the client sees stays clean. */
 export function redirect(url) {
 	return {

@@ -29,6 +29,7 @@ export const emptyDownloadLog = () => ({ events: [], seenAt: null });
  *   selection — their favourites as an archive
  *   photo     — one photo, straight from a tile or the lightbox
  *   favourite — nothing taken yet: they have started marking favourites
+ *   opened    — nothing taken either: a message sent from the share panel was opened
  */
 export function downloadEvent({ gallery, email, kind, count, photoName = null, setTitle = "" }) {
 	return {
@@ -55,6 +56,15 @@ export function downloadEvent({ gallery, email, kind, count, photoName = null, s
  * current — this only says to go and look.
  */
 export const favouriteEvent = ({ gallery, email, count }) => downloadEvent({ gallery, email, kind: "favourite", count });
+
+/**
+ * The first time a message sent from the share panel is opened.
+ *
+ * Only the first, like a favourite: a client re-reading the mail is not news, and
+ * the count is on the gallery's own share record for anyone who wants it. `template`
+ * says which of the two messages it was, since both go to the same address.
+ */
+export const openedEvent = ({ gallery, email, template }) => ({ ...downloadEvent({ gallery, email, kind: "opened", count: 0 }), template });
 
 export async function readDownloadLog() {
 	return (await getJson(DOWNLOADS_KEY))?.data ?? emptyDownloadLog();

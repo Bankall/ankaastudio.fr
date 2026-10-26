@@ -13,7 +13,7 @@ import { emailButton, emailButtonGhost, emailLayout, emailNote, emailParagraph, 
 // The studio's Google Business page, which the delivery mail asks for a review on.
 // A constant rather than a parameter: it is the same page in every message, and the
 // short share.google form is the one Google itself hands out for exactly this.
-const GOOGLE_REVIEW_URL = "https://share.google/nsVhMRrOLPBKb0n6m";
+const GOOGLE_REVIEW_URL = "https://www.google.com/search?q=ankaastudio.fr&sei=Q2rfaoeIDZepkdUPo9iF4Q4";
 
 const frenchDate = value => new Date(value).toLocaleDateString("fr-FR");
 
@@ -21,7 +21,7 @@ const frenchDate = value => new Date(value).toLocaleDateString("fr-FR");
  * "Your gallery is online": the link, the password if one was just typed, and the
  * date it stops working.
  */
-export function galleryOnlineEmail({ gallery, link, password, note, origin }) {
+export function galleryOnlineEmail({ gallery, link, password, note, origin, trackingUrl = null }) {
 	const text = [
 		`Bonjour ${gallery.clientName || ""}`.trim() + ",",
 		"",
@@ -43,6 +43,7 @@ export function galleryOnlineEmail({ gallery, link, password, note, origin }) {
 			heading: "Votre galerie est en ligne",
 			preview: `Vos photos vous attendent dans la galerie « ${gallery.title} ».`,
 			origin,
+			trackingUrl,
 			inner: [
 				emailParagraph(`Bonjour ${escapeHtml(gallery.clientName || "")},`),
 				emailParagraph(`Vos photos vous attendent dans la galerie <strong>${escapeHtml(gallery.title)}</strong>.`),
@@ -68,7 +69,7 @@ export function galleryOnlineEmail({ gallery, link, password, note, origin }) {
  * outlined one for the review, in that order, because only one of them is the reason
  * this email was sent.
  */
-export function deliveryEmail({ gallery, link, note, origin }) {
+export function deliveryEmail({ gallery, link, note, origin, trackingUrl = null }) {
 	const text = [
 		`Bonjour ${gallery.clientName || ""}`.trim() + ",",
 		"",
@@ -99,6 +100,7 @@ export function deliveryEmail({ gallery, link, note, origin }) {
 			heading: "Vos photos sont prêtes",
 			preview: `Les retouches sont terminées, et votre facture est en pièce jointe.`,
 			origin,
+			trackingUrl,
 			// The copy's own last line is the goodbye, so the card signs off with the
 			// studio's name alone rather than saying "à bientôt" twice.
 			signoff: "Ankaa Studio",

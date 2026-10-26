@@ -21,13 +21,22 @@ const NO_PICKS = new Set();
  * `pickedPids` marks one visitor's favourites in place. Everything else steps back
  * rather than disappearing: which photos were *not* chosen is half of what the
  * photographer is looking at, and hiding them would also hide the tools.
+ *
+ * `layout` is how the tiles are laid out. `tiles` is the manager's own grid: uniform
+ * 4:3 thumbnails flowing row by row, one block per tab. `portfolio` is the public
+ * portfolio page's layout instead — three columns filled top to bottom, each tile
+ * at its photo's own aspect ratio, every tab in one flat sequence — because that
+ * page reads the gallery as one ordered list and a photo can only be put where it
+ * will appear by looking at where it appears. Dragging there reorders the flat
+ * list, so it may cross tabs: a photo keeps its set, only its position changes.
  */
-export function AdminPhotoGrid({ photos, sets, coverPid, pickedPids = NO_PICKS, onReorder, onSetCover, onDelete, onCaption, onAssign }) {
+export function AdminPhotoGrid({ photos, sets, coverPid, pickedPids = NO_PICKS, layout = "tiles", onReorder, onSetCover, onDelete, onCaption, onAssign }) {
 	const [order, setOrder] = useState(photos);
 	const [draggedPid, setDraggedPid] = useState(null);
 	const [editing, setEditing] = useState(null);
 	const [caption, setCaption] = useState("");
 	const dirtyRef = useRef(false);
+	const flat = layout === "portfolio";
 
 	// Adopt the server's order whenever it changes underneath us — unless a drag is
 	// mid-flight, which would yank tiles out from under the cursor.
@@ -55,8 +64,10 @@ export function AdminPhotoGrid({ photos, sets, coverPid, pickedPids = NO_PICKS, 
 		}
 
 		// Two tabs are two orders as far as the client is concerned; hovering across
-		// them means nothing, so it does nothing.
-		if (setIdOf.get(draggedPid) !== setIdOf.get(targetPid)) {
+		// them means nothing, so it does nothing — except in the portfolio layout,
+		// where the tabs are not drawn and the one flat order is exactly what is
+		// being arranged.
+		if (!flat && setIdOf.get(draggedPid) !== setIdOf.get(targetPid)) {
 			return;
 		}
 
@@ -101,12 +112,15 @@ export function AdminPhotoGrid({ photos, sets, coverPid, pickedPids = NO_PICKS, 
 	}
 
 	const picking = pickedPids.size > 0;
-	const gridClass = `admin-photo-grid${picking ? " is-picking" : ""}`;
+	const gridClass = `admin-photo-grid${picking ? " is-picking" : ""}${flat ? " admin-photo-grid--portfolio" : ""}`;
 
 	const renderTile = (photo, index) => (
 		<li
 			key={photo.pid}
 			className={`admin-photo${draggedPid === photo.pid ? " is-dragging" : ""}${photo.status !== "ready" ? " is-pending" : ""}${pickedPids.has(photo.pid) ? " is-picked" : ""}`}
+			// The photo's own shape, which is what decides how the columns fall. A photo
+			// still processing has no dimensions yet and keeps the grid's 4:3.
+			style={flat && photo.w && photo.h ? { aspectRatio: `${photo.w} / ${photo.h}` } : undefined}
 			draggable={photo.status === "ready"}
 			onDragStart={() => handleDragStart(photo.pid)}
 			onDragOver={event => handleDragOver(event, photo.pid)}
@@ -189,6 +203,12 @@ export function AdminPhotoGrid({ photos, sets, coverPid, pickedPids = NO_PICKS, 
 			:	null}
 		</li>
 	);
+
+	// The portfolio page shows the gallery as one sequence whatever its tabs, so its
+	// layout does too: the number on each tile is the photo's place on that page.
+	if (flat) {
+		return <ul className={gridClass}>{order.map(renderTile)}</ul>;
+	}
 
 	// One block with no heading is the pre-sets layout, and a lone "Galerie" title
 	// above every photo in the gallery would be noise.

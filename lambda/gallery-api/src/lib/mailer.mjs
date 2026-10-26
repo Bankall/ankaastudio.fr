@@ -29,6 +29,22 @@ const SANS = "'Trebuchet MS', 'Segoe UI', Helvetica, Arial, sans-serif";
 
 const SITE_URL = "https://ankaastudio.fr";
 
+// The studio's name in front of the address. Inboxes show the name, and a bare
+// address in a list where every other sender has one is a mark against a message
+// before it is read — by the reader and by the filter in front of them.
+const SENDER_NAME = "Ankaa Studio";
+
+/**
+ * The open pixel: a 1×1 image whose URL names the message, so that loading it is
+ * what tells the share panel the message was opened.
+ *
+ * Sized and bordered inline because a client that renders it as a broken 16×16
+ * placeholder would show a mark where nothing should be. At the very end of the
+ * body, after the layout, so a client that truncates a long message — Gmail clips
+ * past ~100 kB — drops the pixel rather than a line of the copy.
+ */
+const emailPixel = url => `<img src="${escapeHtml(url)}" width="1" height="1" alt="" aria-hidden="true" style="display:block;width:1px;height:1px;border:0;margin:0;padding:0;">`;
+
 /**
  * The frame every message shares: a warm page, a white card, the wordmark above
  * a serif title, and the studio's footer under it.
@@ -39,8 +55,11 @@ const SITE_URL = "https://ankaastudio.fr";
  *
  * `signoff` is the farewell under the rule, overridable because a message whose own
  * last line already says goodbye would otherwise say it twice.
+ *
+ * `trackingUrl` is the open pixel's URL, for the messages whose opening is worth
+ * knowing about — the ones the photographer sends by hand. Null means no pixel.
  */
-export const emailLayout = ({ label, heading, preview = heading, inner, origin = SITE_URL, signoff = "À très bientôt,<br>Ankaa Studio" }) => `<!doctype html>
+export const emailLayout = ({ label, heading, preview = heading, inner, origin = SITE_URL, signoff = "À très bientôt,<br>Ankaa Studio", trackingUrl = null }) => `<!doctype html>
 <html lang="fr"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -70,6 +89,7 @@ export const emailLayout = ({ label, heading, preview = heading, inner, origin =
 		</table>
 	</td></tr>
 </table>
+${trackingUrl ? emailPixel(trackingUrl) : ""}
 </body></html>`;
 
 /** Body copy. Styled per block: a <td> hands nothing down to its children in Outlook. */
@@ -184,6 +204,10 @@ function rawMessage({ from, to, subject, text, html, attachments }) {
 		`From: ${from}`,
 		`To: ${to}`,
 		`Subject: ${encodeHeader(subject)}`,
+		// SES stamps a Simple message with the date itself; a raw one goes out as
+		// given, and a message with no Date header is one of the oldest spam-filter
+		// rules there is. RFC 5322 wants a numeric zone, not the "GMT" Node prints.
+		`Date: ${new Date().toUTCString().replace(/GMT$/, "+0000")}`,
 		"MIME-Version: 1.0",
 		`Content-Type: multipart/mixed; boundary="${mixed}"`,
 		"",
@@ -227,7 +251,9 @@ function rawMessage({ from, to, subject, text, html, attachments }) {
  * wrong, so only the messages that actually carry a file take the raw path.
  */
 export async function sendEmail({ to, subject, text, html, attachments = [] }) {
-	const from = process.env.SENDER_EMAIL;
+	const address = process.env.SENDER_EMAIL;
+	// Left alone if the deployment already put a name on it.
+	const from = address.includes("<") ? address : `${SENDER_NAME} <${address}>`;
 
 	await ses.send(
 		new SendEmailCommand({

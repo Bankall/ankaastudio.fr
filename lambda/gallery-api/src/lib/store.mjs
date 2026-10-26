@@ -121,15 +121,20 @@ export async function updateJson(key, mutate, { attempts = 6, fallback = null } 
 			return null;
 		}
 
-		const next = (await mutate(data)) ?? data;
+		const next = await mutate(data);
+
+		// Null is the mutate declining: nothing is written, nothing comes back.
+		// Undefined is a mutate that changed `data` in place, which is then what goes.
 		if (next === null) {
 			return null;
 		}
 
-		try {
-			await putJson(key, next, { etag: current?.etag ?? null });
+		const document = next ?? data;
 
-			return next;
+		try {
+			await putJson(key, document, { etag: current?.etag ?? null });
+
+			return document;
 		} catch (error) {
 			if (!(error instanceof ConflictError)) {
 				throw error;

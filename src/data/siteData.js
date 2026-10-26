@@ -12,6 +12,11 @@ export const siteConfig = {
 	calendlyUrl: "https://calendly.com/ankaa-studio"
 };
 
+// The gallery the portfolio page reads, by slug: an ordinary gallery curated in the
+// admin like any shoot, published without a password. Named here so the admin can
+// recognise it too and open it in the layout that page will give it.
+export const portfolioGallerySlug = "portfolio";
+
 export const navigation = [
 	{ href: "/", label: "Accueil" },
 	{ href: "/a-propos", label: "Qui suis-je ?" },

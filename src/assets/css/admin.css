@@ -192,6 +192,26 @@
 	align-items: center;
 }
 
+/* The layout switch, at the end of the photo toolbar. A labelled select rather than
+   a pair of buttons: it is a setting about the grid, not an action on the photos the
+   buttons beside it act on, and pushed to the far side to say so. */
+.admin-layout {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-left: auto;
+	font-size: 0.82rem;
+	color: var(--muted);
+}
+
+.admin-layout select {
+	padding: 0.45rem 0.7rem;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius-sm);
+	background: var(--surface-strong);
+	font-size: 0.85rem;
+}
+
 .admin-create input,
 .admin-inline-form input,
 .admin-section__actions select {
@@ -395,6 +415,59 @@
 	color: var(--text);
 	font: inherit;
 	cursor: pointer;
+}
+
+/* The messages already sent, under both columns: which went to whom, and whether it
+   has been opened. One line per message, newest first. */
+.admin-share__history {
+	grid-column: 1 / -1;
+	padding-top: 1rem;
+	border-top: 1px solid var(--line);
+}
+
+.admin-share__history-header {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.8rem;
+	margin: 0 0 0.5rem;
+}
+
+.admin-share__history-title {
+	margin: 0;
+	font-family: var(--font-display);
+	font-size: 1rem;
+	font-weight: 400;
+}
+
+.admin-share__history-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 0.4rem;
+	font-size: 0.85rem;
+}
+
+.admin-share__history-list li {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.3rem 0.8rem;
+	align-items: baseline;
+}
+
+.admin-share__history-meta {
+	color: var(--muted);
+}
+
+/* Opened is the news; unopened is the quiet default. */
+.admin-share__opened {
+	color: var(--accent-stronger);
+}
+
+.admin-share__unopened {
+	color: var(--muted);
+	font-style: italic;
 }
 
 .admin-selection__list {
@@ -672,6 +745,23 @@
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
 	gap: 0.6rem;
+}
+
+/* The public portfolio page's layout, so that page can be arranged from here: the
+   same three CSS columns, filled top to bottom and balanced, with each tile at its
+   photo's own aspect ratio (set inline on the tile). Row-wise uniform tiles cannot
+   stand in for it — two neighbours in that grid are not neighbours on the page.
+   Three columns at every width, because the portfolio is arranged for a desktop;
+   its own narrow-screen fallbacks are not what the photographer is looking at. */
+.admin-photo-grid--portfolio {
+	display: block;
+	column-count: 3;
+	column-gap: 0.6rem;
+}
+
+.admin-photo-grid--portfolio .admin-photo {
+	margin: 0 0 0.6rem;
+	break-inside: avoid;
 }
 
 .admin-photo {

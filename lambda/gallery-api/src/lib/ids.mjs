@@ -22,6 +22,9 @@ export const setId = () => `s_${shortId(10)}`;
 // to a client carries nothing else, so guessing one must be hopeless (~95 bits).
 export const jobId = () => `j_${shortId(20)}`;
 export const eventId = () => `d_${shortId(10)}`;
+// A bearer like the job id, for the same reason: it is the whole of the URL the open
+// pixel in a mailed message loads, and guessing one must be hopeless.
+export const shareId = () => `m_${shortId(20)}`;
 
 // Slugs land in URLs and in the SPA fallback rule, which folds any path whose
 // last segment has no dot onto index.html — so dots must not survive here.
@@ -39,4 +42,4 @@ export function slugify(input) {
 }
 
 export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/;
-export const ID_PATTERN = /^[gpsjd]_[0-9bcdfghjkmnpqrstvwxz]{6,24}$/;
+export const ID_PATTERN = /^[gpsjdm]_[0-9bcdfghjkmnpqrstvwxz]{6,24}$/;

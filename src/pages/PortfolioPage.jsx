@@ -3,14 +3,14 @@ import { Seo } from "../components/Seo.jsx";
 import { SectionHeading } from "../components/SectionHeading.jsx";
 import { Lightbox } from "../gallery/Lightbox.jsx";
 import { PhotoTile } from "../gallery/PhotoTile.jsx";
-import { siteConfig } from "../data/siteData.js";
+import { portfolioGallerySlug, siteConfig } from "../data/siteData.js";
 import { galleryApi } from "../utils/galleryApi.js";
 
 // The portfolio is an ordinary gallery, curated in the admin like any shoot and
 // published under this slug without a password. This page is only the public way
 // through it, so the photographer changes what the site shows by changing the
 // gallery — nothing here needs touching.
-const PORTFOLIO_SLUG = "portfolio";
+const PORTFOLIO_SLUG = portfolioGallerySlug;
 // Nothing is offered for download on a public portfolio, and there is nobody to
 // file favourites under, so the lightbox is told so once.
 const DOWNLOADS_OFF = { enabled: false, hd: false, zip: false };

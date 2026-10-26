@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { portfolioGallerySlug } from "../data/siteData.js";
 import { adminApi } from "../utils/galleryApi.js";
 import { PREVIEW_QUALITY_LABELS, WATERMARK_LABELS, tabOf, watermarkFor } from "../utils/gallerySets.js";
 import { AdminPhotoGrid } from "./AdminPhotoGrid.jsx";
@@ -19,6 +20,16 @@ const STATUS_LABELS = {
 
 /** ISO timestamp ⇄ the yyyy-mm-dd that <input type="date"> wants. */
 const toDateInput = value => (value ? value.slice(0, 10) : "");
+
+// How the photo grid is laid out, as the photographer picks it. `tiles` is the
+// manager's own grid; `portfolio` reproduces the public portfolio page — three
+// columns filled top to bottom, each photo at its own shape — which is the only way
+// to arrange that page, since a row of uniform tiles says nothing about where a
+// photo will fall in a column.
+const PHOTO_LAYOUT_LABELS = {
+	tiles: "Vignettes",
+	portfolio: "Comme la page portfolio"
+};
 
 /**
  * How one selection is told from another.
@@ -64,6 +75,9 @@ export function GalleryEditor() {
 	// time: two selections marked in the same colour would say nothing about whose
 	// photo is whose, which is the only question worth asking of them.
 	const [picked, setPicked] = useState(null);
+	// Null until the photographer picks one: the gallery then decides. The one gallery
+	// the portfolio page reads opens in that page's layout, every other in the grid.
+	const [layout, setLayout] = useState(null);
 	const pollRef = useRef(null);
 	const slugRef = useRef(null);
 
@@ -89,6 +103,17 @@ export function GalleryEditor() {
 		return () => {
 			cancelled = true;
 		};
+	}, [gid]);
+
+	// A plain re-read, for the panels that only want to know what the record says now
+	// — whether a mail has been opened — without the sidecar sweep reconcile does.
+	const reload = useCallback(async () => {
+		try {
+			const payload = await adminApi.readGallery(gid);
+			setGallery(payload.gallery);
+		} catch (failure) {
+			setError(failure.message);
+		}
 	}, [gid]);
 
 	// Reconcile folds the processor's sidecars into the record, so it doubles as
@@ -496,6 +521,7 @@ export function GalleryEditor() {
 	// whatever the visitor has added since — and a list that has gone away stops marking.
 	const pickedVisitor = selection?.visitors.find(visitor => visitorKey(visitor) === picked) ?? null;
 	const pickedPids = new Set((pickedVisitor?.photos ?? []).map(photo => photo.pid));
+	const photoLayout = layout ?? (gallery.slug === portfolioGallerySlug ? "portfolio" : "tiles");
 
 	return (
 		<section className='admin-section'>
@@ -696,7 +722,7 @@ export function GalleryEditor() {
 
 				<article className='admin-panel admin-panel--wide'>
 					<h2 className='admin-panel__title'>Partage</h2>
-					<SharePanel gallery={gallery} publicUrl={publicUrl} />
+					<SharePanel gallery={gallery} publicUrl={publicUrl} onRefresh={reload} />
 				</article>
 
 				<article className='admin-panel admin-panel--wide'>
@@ -734,7 +760,29 @@ export function GalleryEditor() {
 						<button className='button-secondary' type='button' disabled={gallery.photos.length < 2} onClick={handleShuffle}>
 							Mélanger
 						</button>
+
+						<label className='admin-layout'>
+							<span>Affichage</span>
+							<select value={photoLayout} onChange={event => setLayout(event.target.value)}>
+								{Object.entries(PHOTO_LAYOUT_LABELS).map(([value, label]) => (
+									<option key={value} value={value}>
+										{label}
+									</option>
+								))}
+							</select>
+						</label>
 					</div>
+
+					{/* What this layout is and is not: the portfolio page on a desktop, with its
+					    three columns, and not the client gallery — which fills the screen with
+					    three to five of them. Said here because the grid below drops the tab
+					    headings in this mode, which otherwise reads as the sets having gone. */}
+					{photoLayout === "portfolio" ?
+						<p className='admin-hint'>
+							Les photos sont disposées comme sur la page portfolio : trois colonnes remplies de haut en bas, chaque photo à ses proportions, toutes catégories
+							confondues. Glissez une photo pour la placer où elle apparaîtra ; le numéro est sa position sur la page.
+						</p>
+					:	null}
 
 					{/* One list per person: a gallery link goes to everyone who was
 					    photographed, and which photo is on whose list is the point. */}
@@ -797,6 +845,7 @@ export function GalleryEditor() {
 						sets={sets}
 						pickedPids={pickedPids}
 						coverPid={gallery.coverPid}
+						layout={photoLayout}
 						onReorder={order => adminApi.updatePhotos(gid, { order }).then(payload => setGallery(payload.gallery))}
 						onSetCover={pid => patch({ coverPid: pid })}
 						onDelete={handleDeletePhoto}
