@@ -70,3 +70,37 @@ export function groupBySet(photos, sets, { keepEmpty = false } = {}) {
 		...(sets ?? []).filter(set => keepEmpty || buckets.get(set.id).length > 0).map(set => ({ set, photos: buckets.get(set.id) }))
 	];
 }
+
+/**
+ * The client tab a URL names: its slug, then a slug it had before a rename, then
+ * its id (what the ?set= links in older delivery mails carry). Null for nothing
+ * matching — the page then opens on the first tab. Same order as the API's
+ * findSetBySegment().
+ */
+export function findSetBySegment(sets, segment) {
+	if (!segment) {
+		return null;
+	}
+
+	return sets.find(set => set.slug === segment) ?? sets.find(set => (set.aliases ?? []).includes(segment)) ?? sets.find(set => set.id === segment) ?? null;
+}
+
+/**
+ * The address of a tab: the gallery's own for the first one, so the plain link stays
+ * the plain link, and /<set slug> after it for the others. Any query string other
+ * than the old `set` parameter is kept.
+ *
+ * Falls back to the id for a tab with no slug — a manifest from an API deployed
+ * before slugs. findSetBySegment() reads an id too, so the tab still opens; without
+ * the fallback every tab but the first would link to the first.
+ */
+export function setPath(gallerySlug, sets, set, search = "") {
+	const params = new URLSearchParams(search);
+	params.delete("set");
+
+	const query = params.toString();
+	const name = set && set !== sets[0] ? (set.slug ?? set.id) : null;
+	const segment = name ? `/${encodeURIComponent(name)}` : "";
+
+	return `/gallery/${encodeURIComponent(gallerySlug)}${segment}${query ? `?${query}` : ""}`;
+}

@@ -45,20 +45,7 @@ function WatermarkSelect({ id, value, onChange }) {
 	);
 }
 
-export function SetsPanel({
-	sets,
-	counts,
-	ungroupedCount,
-	ungrouped,
-	downloadsEnabled,
-	onCreate,
-	onUpdate,
-	onUpdateUngrouped,
-	onWatermark,
-	onRegenerate,
-	onReorder,
-	onDelete
-}) {
+export function SetsPanel({ sets, counts, ungroupedCount, ungrouped, downloadsEnabled, onCreate, onUpdate, onUpdateUngrouped, onWatermark, onRegenerate, onReorder, onDelete }) {
 	const [title, setTitle] = useState("");
 	const [busy, setBusy] = useState(false);
 
@@ -101,10 +88,9 @@ export function SetsPanel({
 
 	return (
 		<div className='admin-sets'>
-			<p className='admin-hint'>
-				Une catégorie regroupe des photos sous un onglet dans la galerie du client, avec ses propres réglages de téléchargement et de filigrane. Les photos qui n’en
-				ont aucune forment un onglet à part, avec les siens. Changer le filigrane propose d’en régénérer les aperçus, et une photo déplacée d’un onglet à l’autre prend
-				d’office celui de son nouvel onglet ; ⟳ régénère un onglet à la demande.
+			<p className='admin-hint' style={{ display: "none" }}>
+				Une catégorie regroupe des photos sous un onglet dans la galerie du client, avec ses propres réglages de téléchargement et de filigrane. Les photos qui n’en ont aucune forment un onglet à part, avec les
+				siens. Changer le filigrane propose d’en régénérer les aperçus, et une photo déplacée d’un onglet à l’autre prend d’office celui de son nouvel onglet ; ⟳ régénère un onglet à la demande.
 			</p>
 
 			<ul className='admin-sets__list'>
@@ -119,22 +105,12 @@ export function SetsPanel({
 						</span>
 
 						<label className='admin-toggle'>
-							<input
-								type='checkbox'
-								checked={own.downloadsEnabled}
-								disabled={!downloadsEnabled}
-								onChange={event => onUpdateUngrouped({ downloadsEnabled: event.target.checked })}
-							/>
+							<input type='checkbox' checked={own.downloadsEnabled} disabled={!downloadsEnabled} onChange={event => onUpdateUngrouped({ downloadsEnabled: event.target.checked })} />
 							<span>Téléchargements</span>
 						</label>
 
 						<label className='admin-toggle'>
-							<input
-								type='checkbox'
-								checked={own.hdEnabled}
-								disabled={!downloadsEnabled || !own.downloadsEnabled}
-								onChange={event => onUpdateUngrouped({ hdEnabled: event.target.checked })}
-							/>
+							<input type='checkbox' checked={own.hdEnabled} disabled={!downloadsEnabled || !own.downloadsEnabled} onChange={event => onUpdateUngrouped({ hdEnabled: event.target.checked })} />
 							<span>Haute définition</span>
 						</label>
 
@@ -143,11 +119,7 @@ export function SetsPanel({
 						{/* No arrows and no bin, unlike a category's row: this tab always leads,
 						    and the only way to be rid of it is to sort every photo into one. */}
 						<span className='admin-sets__tools'>
-							<button
-								type='button'
-								onClick={() => onRegenerate(null, ungroupedLabel, ungroupedCount)}
-								disabled={ungroupedCount === 0}
-								title='Régénérer les aperçus de cet onglet'>
+							<button type='button' onClick={() => onRegenerate(null, ungroupedLabel, ungroupedCount)} disabled={ungroupedCount === 0} title='Régénérer les aperçus de cet onglet'>
 								⟳
 							</button>
 						</span>
@@ -174,22 +146,12 @@ export function SetsPanel({
 							</span>
 
 							<label className='admin-toggle'>
-								<input
-									type='checkbox'
-									checked={set.downloadsEnabled}
-									disabled={!downloadsEnabled}
-									onChange={event => onUpdate(set.id, { downloadsEnabled: event.target.checked })}
-								/>
+								<input type='checkbox' checked={set.downloadsEnabled} disabled={!downloadsEnabled} onChange={event => onUpdate(set.id, { downloadsEnabled: event.target.checked })} />
 								<span>Téléchargements</span>
 							</label>
 
 							<label className='admin-toggle'>
-								<input
-									type='checkbox'
-									checked={set.hdEnabled}
-									disabled={!downloadsEnabled || !set.downloadsEnabled}
-									onChange={event => onUpdate(set.id, { hdEnabled: event.target.checked })}
-								/>
+								<input type='checkbox' checked={set.hdEnabled} disabled={!downloadsEnabled || !set.downloadsEnabled} onChange={event => onUpdate(set.id, { hdEnabled: event.target.checked })} />
 								<span>Haute définition</span>
 							</label>
 

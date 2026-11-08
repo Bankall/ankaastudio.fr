@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Seo } from "../components/Seo.jsx";
 import { ApiError, galleryApi } from "../utils/galleryApi.js";
+import { findSetBySegment, setPath } from "../utils/gallerySets.js";
 import { DownloadPanel } from "./DownloadPanel.jsx";
 import { EmailPrompt } from "./EmailPrompt.jsx";
 import { GalleryCover } from "./GalleryCover.jsx";
@@ -80,23 +81,24 @@ function formatDate(value) {
 }
 
 export function GalleryPage() {
-	const { slug } = useParams();
+	const { slug, setSlug } = useParams();
+	const location = useLocation();
+	const goTo = useNavigate();
 	// The slug travels with the state so that a route change is "loading" by
 	// derivation, without an extra render just to reset it.
 	const [state, setState] = useState({ status: "loading", slug });
 	const [selection, setSelection] = useState([]);
 	const [lightboxIndex, setLightboxIndex] = useState(null);
-	// The open tab, carrying its slug the way `state` does so that a route change
-	// makes it stale by derivation rather than through an effect that resets it.
-	// `undefined` means "whatever the manifest lists first", which is not the same as
-	// `null` — that one is the tab of photos belonging to no set.
+	// The open tab is the URL's, and nothing else: /gallery/<slug>/<set slug>. A link
+	// the studio sends (the delivery mail, a button in a free message) opens on that
+	// category, and a visitor who copies the address bar shares the tab they are
+	// looking at. No segment means "whatever the manifest lists first" — which is also
+	// where the ungrouped photos sit when there are any, so the `null` tab never needs
+	// an address of its own.
 	//
-	// Seeded from `?set=` so the studio can send a link that opens on one category:
-	// the delivery email points at the set that was just retouched, which in a gallery
-	// of several tabs is not the one listed first. Read once, at mount, rather than
-	// tracked — the query string is where the visitor arrived, not where they are, and
-	// an id the manifest does not list falls through to the first tab below.
-	const [tab, setTab] = useState(() => ({ slug, id: new URLSearchParams(window.location.search).get("set") ?? undefined }));
+	// `?set=<id>` is still read, for the delivery mails sent before the path form;
+	// the page swaps it for the path once the manifest is in (below).
+	const requestedSet = setSlug ?? new URLSearchParams(location.search).get("set");
 	// Who this browser belongs to, as far as the gallery knows. Favourites are filed
 	// under it, so nothing can be hearted before it is given.
 	const [email, setEmail] = useState(readVisitorEmail);
@@ -267,8 +269,19 @@ export function GalleryPage() {
 	// An id the manifest no longer lists — a set deleted while the page was open, or a
 	// tab held over from another gallery — falls back to the first tab rather than to
 	// an empty gallery.
-	const activeSet = (tab.slug === slug ? sets.find(set => set.id === tab.id) : null) ?? sets[0] ?? null;
+	const activeSet = findSetBySegment(sets, requestedSet) ?? sets[0] ?? null;
 	const activeId = activeSet?.id ?? null;
+	// The address put right once the manifest says what it names: an old ?set=<id>, a
+	// slug from before a rename, or one that names nothing becomes the open tab's
+	// current address. Replaced, so Back does not return to the old form.
+	const canonicalPath = status === "ready" ? setPath(slug, sets, activeSet, location.search) : null;
+	const currentPath = `${location.pathname}${location.search}`;
+
+	useEffect(() => {
+		if (canonicalPath && canonicalPath !== currentPath) {
+			goTo(canonicalPath, { replace: true, preventScrollReset: true });
+		}
+	}, [canonicalPath, currentPath, goTo]);
 	const favourites = useMemo(() => new Set(selection), [selection]);
 	// The selection closes the row, after the sets it is drawn from. A tab of its own
 	// rather than a filter beside the row: it is another way through the same
@@ -374,7 +387,10 @@ export function GalleryPage() {
 
 		if (id !== FAVOURITES_ID) {
 			setFavouritesOnly(false);
-			setTab({ slug, id });
+			// Replaced rather than pushed: Back leaves the gallery the way it came in
+			// instead of stepping back through every tab clicked. `preventScrollReset`
+			// because SetTabs scrolls to the photos itself.
+			goTo(setPath(slug, sets, sets.find(set => set.id === id) ?? null, location.search), { replace: true, preventScrollReset: true });
 
 			return;
 		}

@@ -12,7 +12,7 @@ import { galleryId, photoId, setId as newSetId, shareId, SLUG_PATTERN, slugify }
 import { sendEmail } from "../lib/mailer.mjs";
 import { hashPassword, verifyPassword } from "../lib/passwords.mjs";
 import { invokeProcessor } from "../lib/processor.mjs";
-import { richDoc } from "../lib/richtext.mjs";
+import { buttonSetIds, richDoc } from "../lib/richtext.mjs";
 import { getSecrets } from "../lib/secrets.mjs";
 import { deleteKeys, deletePrefix, getBytes, getJson, listKeys, mapWithLimit, objectExists, putJson, s3, updateJson } from "../lib/store.mjs";
 import { bool, email, isoDate, oneOf, str, stringArray } from "../lib/validate.mjs";
@@ -21,6 +21,8 @@ import {
 	archivedPhoto,
 	coverImageKey,
 	emptyIndex,
+	ensureSetSlugs,
+	freshSetSlug,
 	GALLERY_STATUSES,
 	galleryKey,
 	hdKey,
@@ -41,9 +43,11 @@ import {
 	PREVIEW_QUALITY_MODES,
 	previewQualityFor,
 	readyCover,
+	renameSetSlug,
 	selectionKey,
 	selectionVisitors,
 	setOf,
+	setSlugs,
 	sharePreviewKey,
 	sidecarKey,
 	sidecarPrefix,
@@ -999,7 +1003,10 @@ async function createSet({ request, params }) {
 		throw badRequest(`${MAX_SETS} catégories maximum par galerie.`);
 	}
 
-	gallery.sets.push(newSet({ id: newSetId(), title, hdEnabled: ungroupedSettings(gallery).hdEnabled }));
+	// Older sets get their slugs written first, so the new one is checked against the
+	// addresses they actually answer to.
+	ensureSetSlugs(gallery);
+	gallery.sets.push(newSet({ id: newSetId(), title, slug: freshSetSlug(gallery, title), hdEnabled: ungroupedSettings(gallery).hdEnabled }));
 
 	await saveGallery(gallery, etag);
 
@@ -1016,6 +1023,12 @@ async function updateSet({ request, params }) {
 		downloadsEnabled: bool(request.body?.downloadsEnabled, "téléchargements de la catégorie"),
 		hdEnabled: bool(request.body?.hdEnabled, "haute définition de la catégorie")
 	};
+
+	// Before the title changes: the slug follows the new title, and the old one stays
+	// an alias so the links already sent keep opening on this tab.
+	if (assignments.title !== null) {
+		renameSetSlug(gallery, set, assignments.title);
+	}
 
 	for (const [field, value] of Object.entries(assignments)) {
 		if (value !== null) {
@@ -1229,6 +1242,16 @@ async function share({ request, params }) {
 		throw badRequest("Publiez la galerie avant de l'envoyer au client.");
 	}
 
+	// A button naming a set the gallery no longer has would open on the first tab
+	// instead, which is not what the photographer pointed it at.
+	const knownSets = new Set((gallery.sets ?? []).map(set => set.id));
+
+	if (buttonSetIds(note).some(id => !knownSets.has(id))) {
+		throw badRequest("Un bouton du message pointe vers une catégorie qui n'existe plus dans la galerie.");
+	}
+
+	const galleryLink = setId => galleryUrl(origin, gallery, setId);
+
 	// This send, as the record will remember it. Minted before the mail goes out
 	// because its id is in the mail: the HTML version loads one pixel from
 	// /api/open/<gid>/<id> (routes/tracking.mjs), and that id is what tells "this
@@ -1238,9 +1261,9 @@ async function share({ request, params }) {
 	const trackingUrl = `${origin}/api/open/${gallery.id}/${sent.id}`;
 
 	const delivery =
-		template === "delivery" ? await sendDelivery({ gallery, request, recipient, note, heading, preview, origin, trackingUrl })
-		: free ? await sendFree({ recipient, body: note, heading, preview, origin, trackingUrl })
-		: await sendOnline({ gallery, request, recipient, note, heading, preview, origin, trackingUrl });
+		template === "delivery" ? await sendDelivery({ gallery, request, recipient, note, heading, preview, origin, trackingUrl, galleryLink })
+		: free ? await sendFree({ recipient, body: note, heading, preview, origin, trackingUrl, galleryLink })
+		: await sendOnline({ gallery, request, recipient, note, heading, preview, origin, trackingUrl, galleryLink });
 
 	// Written only now: a record saying a message went out when the send threw would
 	// offer the panel a re-send of something the client never got, and wait for an
@@ -1268,13 +1291,26 @@ async function share({ request, params }) {
 	return json(200, { ok: true, sentTo: recipient, template, share: sent, ...(delivery ? { invoiceName: delivery.invoice.filename } : {}) });
 }
 
+/**
+ * The client's address for the gallery, opening on one set when there is one —
+ * /gallery/<gallery>/<set slug>, the path the gallery page reads for its open tab.
+ * One builder for the delivery link and for every button a message holds, so they
+ * cannot disagree.
+ */
+const galleryUrl = (origin, gallery, setId = null) => {
+	const setSlug = setId ? setSlugs(gallery).get(setId) : null;
+
+	return `${origin}/gallery/${gallery.slug}${setSlug ? `/${encodeURIComponent(setSlug)}` : ""}`;
+};
+
 /** The first message: the gallery is up, here is the link. Nothing to record beyond the send. */
-async function sendOnline({ gallery, request, recipient, note, heading, preview, origin, trackingUrl }) {
+async function sendOnline({ gallery, request, recipient, note, heading, preview, origin, trackingUrl, galleryLink }) {
 	await sendEmail({
 		to: recipient,
 		...galleryOnlineEmail({
 			gallery,
-			link: `${origin}/gallery/${gallery.slug}`,
+			link: galleryUrl(origin, gallery),
+			galleryLink,
 			// Typed here rather than read from the record: it is only ever stored as a
 			// hash, so this is the one moment it can be put in an email.
 			password: str(request.body?.password, "mot de passe", { max: 200 }),
@@ -1290,8 +1326,8 @@ async function sendOnline({ gallery, request, recipient, note, heading, preview,
 }
 
 /** The free-form message: the photographer's heading and text in the studio's layout, nothing else. */
-async function sendFree({ recipient, body, heading, preview, origin, trackingUrl }) {
-	await sendEmail({ to: recipient, ...freeEmail({ heading, preview, body, origin, trackingUrl }) });
+async function sendFree({ recipient, body, heading, preview, origin, trackingUrl, galleryLink }) {
+	await sendEmail({ to: recipient, ...freeEmail({ heading, preview, body, galleryLink, origin, trackingUrl }) });
 
 	return null;
 }
@@ -1300,14 +1336,14 @@ async function sendFree({ recipient, body, heading, preview, origin, trackingUrl
  * The second message: the edits are done, here is the set, here is the invoice.
  *
  * The link carries the set so the client lands on the retouched tab rather than on
- * whichever one the gallery lists first — `?set=` is read by the gallery page on
- * load. A gallery that was never split into tabs sends no set and links to the whole
+ * whichever one the gallery lists first — the set's slug, as the last segment of
+ * the path. A gallery that was never split into tabs sends no set and links to the whole
  * of it, which is the same thing in that case.
  *
  * Answers with what the record keeps of a delivery — the invoice that went and the
  * set it opened on — for share() to write once the message is away.
  */
-async function sendDelivery({ gallery, request, recipient, note, heading, preview, origin, trackingUrl }) {
+async function sendDelivery({ gallery, request, recipient, note, heading, preview, origin, trackingUrl, galleryLink }) {
 	const setId = str(request.body?.setId, "catégorie", { max: 60 });
 	const set = setId ? (gallery.sets ?? []).find(candidate => candidate.id === setId) : null;
 
@@ -1327,7 +1363,8 @@ async function sendDelivery({ gallery, request, recipient, note, heading, previe
 			gallery,
 			// The set reaches the client through the link and nowhere else: the copy
 			// does not name which one, it opens on it.
-			link: `${origin}/gallery/${gallery.slug}${set ? `?set=${encodeURIComponent(set.id)}` : ""}`,
+			link: galleryUrl(origin, gallery, set?.id),
+			galleryLink,
 			note,
 			heading,
 			preview,

@@ -1,6 +1,8 @@
 // Gallery domain model: key layout, defaults, and the projections that decide
 // what each audience is allowed to see.
 
+import { slugBase } from "./ids.mjs";
+
 export const INDEX_KEY = "db/index.json";
 
 export const galleryKey = gid => `db/galleries/${gid}.json`;
@@ -186,10 +188,111 @@ export const ungroupedSettings = gallery =>
  * tracks the gallery keeps a set that was never given a mode of its own from quietly
  * needing one.
  */
-export function newSet({ id, title, hdEnabled = true }) {
+// --- set slugs ---------------------------------------------------------------
+//
+// A set's address inside its gallery: /gallery/<gallery>/<set>, the readable form
+// of what used to be ?set=<id>. Unique within the gallery, and stored on the set
+// once written, so it does not move under a link already mailed.
+//
+// Renaming a set gives it the new title's slug and keeps the old one in
+// `slugAliases`, so links sent before the rename still open on it — the gallery
+// page then puts the current slug in the address bar. The id is accepted too,
+// which is what the ?set= links in older delivery mails carry.
+//
+// Records from before slugs have none stored: setSlugs() derives them, the same way
+// every time, and ensureSetSlugs() writes them down on the next change to the sets.
+
+const MAX_SLUG_ALIASES = 10;
+// For a title with nothing a URL can hold: "📸" slugs to nothing.
+const FALLBACK_SET_SLUG = "categorie";
+
+const baseFor = title => slugBase(title) || FALLBACK_SET_SLUG;
+
+const uniqueAgainst = (base, taken) => {
+	let candidate = base;
+
+	for (let suffix = 2; taken.has(candidate); suffix += 1) {
+		candidate = `${base}-${suffix}`;
+	}
+
+	return candidate;
+};
+
+/** Every slug and alias in use, optionally leaving one set out of the count. */
+const takenSlugs = (gallery, except = null) =>
+	new Set((gallery.sets ?? []).filter(set => set !== except).flatMap(set => [set.slug, ...(set.slugAliases ?? [])].filter(Boolean)));
+
+/** Set id → its slug, stored or (for an older record) derived in tab order. */
+export function setSlugs(gallery) {
+	const taken = takenSlugs(gallery);
+	const slugs = new Map();
+
+	for (const set of gallery.sets ?? []) {
+		if (set.slug) {
+			slugs.set(set.id, set.slug);
+			continue;
+		}
+
+		const slug = uniqueAgainst(baseFor(set.title), taken);
+		taken.add(slug);
+		slugs.set(set.id, slug);
+	}
+
+	return slugs;
+}
+
+/** Writes the derived slugs onto the record, so they stop depending on the titles. */
+export function ensureSetSlugs(gallery) {
+	const slugs = setSlugs(gallery);
+
+	for (const set of gallery.sets ?? []) {
+		set.slug = slugs.get(set.id);
+	}
+}
+
+/** The slug a new set with this title gets. Call after ensureSetSlugs(). */
+export const freshSetSlug = (gallery, title) => uniqueAgainst(baseFor(title), takenSlugs(gallery));
+
+/**
+ * A rename's effect on the address: the new title's slug, the old one kept as an
+ * alias. Its own aliases do not count as taken, so renaming back reclaims the old
+ * address rather than minting a "-2". A rename that changes nothing the slug can
+ * see — an accent, a capital — leaves it alone.
+ */
+export function renameSetSlug(gallery, set, title) {
+	ensureSetSlugs(gallery);
+	const next = uniqueAgainst(baseFor(title), takenSlugs(gallery, set));
+
+	if (next === set.slug) {
+		return;
+	}
+
+	set.slugAliases = [set.slug, ...(set.slugAliases ?? []).filter(alias => alias !== next && alias !== set.slug)].slice(0, MAX_SLUG_ALIASES);
+	set.slug = next;
+}
+
+/** The set a URL segment names: its slug, then an old slug, then its id. */
+export function findSetBySegment(gallery, segment) {
+	if (!segment) {
+		return null;
+	}
+
+	const sets = gallery.sets ?? [];
+	const slugs = setSlugs(gallery);
+
+	return (
+		sets.find(set => slugs.get(set.id) === segment) ??
+		sets.find(set => (set.slugAliases ?? []).includes(segment)) ??
+		sets.find(set => set.id === segment) ??
+		null
+	);
+}
+
+export function newSet({ id, title, slug, hdEnabled = true }) {
 	return {
 		id,
 		title,
+		slug,
 		downloadsEnabled: true,
 		hdEnabled: Boolean(hdEnabled),
 		watermark: null
@@ -481,6 +584,7 @@ export function clientProjection(gallery, { cleanCover = false } = {}) {
 	// tab here, and a client taking the record at its word would file that photo
 	// under a tab that is not in the list.
 	const placement = new Map(groups.flatMap(group => group.photos.map(photo => [photo.pid, group.set?.id ?? null])));
+	const slugs = setSlugs(gallery);
 
 	return {
 		slug: gallery.slug,
@@ -502,8 +606,12 @@ export function clientProjection(gallery, { cleanCover = false } = {}) {
 		fullResTiles: Boolean(gallery.fullResTiles),
 		// Always at least one entry, so the client renders tabs when there are several
 		// and nothing at all when there is one.
+		// `slug` is the tab's address; `aliases` are the ones it answered to before a
+		// rename, for the page to recognise in an old link and swap for the current one.
 		sets: groups.map(group => ({
 			id: group.set?.id ?? null,
+			slug: group.set ? slugs.get(group.set.id) : null,
+			aliases: group.set?.slugAliases ?? [],
 			title: group.set?.title ?? DEFAULT_SET_TITLE,
 			downloads: downloadsFor(gallery, group.set),
 			photoCount: group.photos.length
@@ -523,6 +631,7 @@ export function clientProjection(gallery, { cleanCover = false } = {}) {
 /** What the admin sees: everything except the hash itself. */
 export function adminProjection(gallery) {
 	const { password, ...rest } = gallery;
+	const slugs = setSlugs(gallery);
 
 	return {
 		...rest,
@@ -531,7 +640,9 @@ export function adminProjection(gallery) {
 		// bucket without having to know that an older record keeps the remainder's HD
 		// setting at the top level.
 		ungrouped: ungroupedSettings(gallery),
-		sets: gallery.sets ?? [],
+		// With their slugs resolved, so a record from before slugs shows the address
+		// the client will actually get.
+		sets: (gallery.sets ?? []).map(set => ({ ...set, slug: slugs.get(set.id) })),
 		photos: (gallery.photos ?? [])
 			.slice()
 			.sort((a, b) => a.sortIndex - b.sortIndex)

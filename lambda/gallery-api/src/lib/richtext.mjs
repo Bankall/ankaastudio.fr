@@ -8,12 +8,16 @@
 // From the checked tree it writes the two halves of a message, the inline-styled
 // HTML an email client needs and the plain text that goes beside it.
 
-import { emailLink, emailList, emailParagraph, emailQuote, escapeHtml } from "./mailer.mjs";
+import { emailButton, emailLink, emailList, emailParagraph, emailQuote, escapeHtml } from "./mailer.mjs";
 import { badRequest } from "./http.mjs";
 
 // Which node may hold which. Mirrors the panel's editor (StarterKit without
-// headings, code or rules, plus TextAlign on paragraphs).
-const BLOCKS = ["paragraph", "bulletList", "orderedList", "blockquote"];
+// headings, code or rules, plus TextAlign on paragraphs, plus the gallery button).
+//
+// `galleryButton` carries a label and, optionally, the set it opens on — never a
+// URL. The address is the gallery's own, built here by the caller's galleryLink(),
+// so a button in a message can only ever lead to the gallery it was sent about.
+const BLOCKS = ["paragraph", "bulletList", "orderedList", "blockquote", "galleryButton"];
 const CHILDREN = {
 	doc: BLOCKS,
 	blockquote: BLOCKS,
@@ -23,6 +27,8 @@ const CHILDREN = {
 	paragraph: ["text", "hardBreak"]
 };
 const MARKS = ["bold", "italic", "underline", "strike", "link"];
+const MAX_BUTTON_LABEL = 80;
+const MAX_SET_ID = 60;
 const ALIGNMENTS = ["left", "center", "right"];
 
 // Generous for anything typed by hand, small enough that a crafted payload cannot
@@ -107,6 +113,10 @@ function clean(node, expected, depth, state, field) {
 		return { type: "hardBreak" };
 	}
 
+	if (expected === "galleryButton") {
+		return cleanButton(node, state, field);
+	}
+
 	const content = node.content ?? [];
 
 	if (!Array.isArray(content)) {
@@ -135,6 +145,45 @@ function clean(node, expected, depth, state, field) {
 	}
 
 	return cleaned;
+}
+
+function cleanButton(node, state, field) {
+	const label = typeof node.attrs?.label === "string" ? node.attrs.label.trim() : "";
+	const setId = node.attrs?.setId ?? null;
+
+	if (!label || label.length > MAX_BUTTON_LABEL) {
+		throw badRequest(`Le champ « ${field} » contient un bouton sans texte, ou dont le texte dépasse ${MAX_BUTTON_LABEL} caractères.`);
+	}
+
+	if (setId !== null && (typeof setId !== "string" || !setId || setId.length > MAX_SET_ID)) {
+		throw invalid(field);
+	}
+
+	state.chars += label.length;
+
+	return { type: "galleryButton", label, setId };
+}
+
+/**
+ * The set ids the tree's buttons open on, for the route to check against the
+ * gallery: a button pointing at a set deleted since the panel was loaded would
+ * otherwise send the client to whichever tab happens to be first.
+ */
+export function buttonSetIds(doc) {
+	const found = new Set();
+	const walk = node => {
+		if (node.type === "galleryButton" && node.setId) {
+			found.add(node.setId);
+		}
+
+		(node.content ?? []).forEach(walk);
+	};
+
+	if (doc) {
+		walk(doc);
+	}
+
+	return [...found];
 }
 
 /** Marks in a fixed order, so the HTML nests the same way whatever order the editor kept. */
@@ -207,8 +256,11 @@ const paragraphHtml = node => node.content.map(inlineHtml).join("") || "&nbsp;";
 /**
  * A list of blocks. `last` is the margin of the final one: none inside a frame or a
  * list item, so the spacing is the frame's and not an extra blank line in it.
+ *
+ * `galleryLink(setId)` is the gallery's address, opening on that set when there is
+ * one — required as soon as the tree holds a button.
  */
-function blocksHtml(blocks, { last = "0 0 16px" } = {}) {
+function blocksHtml(blocks, { last = "0 0 16px", galleryLink } = {}) {
 	return blocks
 		.map((block, index) => {
 			const margin = index === blocks.length - 1 ? last : "0 0 16px";
@@ -217,8 +269,12 @@ function blocksHtml(blocks, { last = "0 0 16px" } = {}) {
 				return emailParagraph(paragraphHtml(block), { align: block.align, margin });
 			}
 
+			if (block.type === "galleryButton") {
+				return emailButton(linkFor(galleryLink, block), block.label);
+			}
+
 			if (block.type === "blockquote") {
-				return emailQuote(blocksHtml(block.content, { last: "0" }), { margin });
+				return emailQuote(blocksHtml(block.content, { last: "0", galleryLink }), { margin });
 			}
 
 			return emailList(block.content.map(listItemHtml), { ordered: block.type === "orderedList", start: block.start, margin });
@@ -242,8 +298,16 @@ function listItemHtml(item) {
 		.join("");
 }
 
-/** The email HTML of a checked tree. `last` as in blocksHtml: "0" when it sits in a frame. */
-export const richHtml = (doc, { last } = {}) => blocksHtml(doc.content, { last });
+const linkFor = (galleryLink, button) => {
+	if (!galleryLink) {
+		throw new Error("richtext: a gallery button needs galleryLink() to be rendered");
+	}
+
+	return galleryLink(button.setId);
+};
+
+/** The email HTML of a checked tree. `last` and `galleryLink` as in blocksHtml. */
+export const richHtml = (doc, { last, galleryLink } = {}) => blocksHtml(doc.content, { last, galleryLink });
 
 // --- plain text --------------------------------------------------------------
 
@@ -278,7 +342,7 @@ function listText(list) {
 		.join("\n");
 }
 
-function blocksText(blocks) {
+function blocksText(blocks, galleryLink) {
 	return blocks
 		.filter(block => !isEmptyParagraph(block))
 		.map(block => {
@@ -286,8 +350,13 @@ function blocksText(blocks) {
 				return paragraphText(block);
 			}
 
+			// The same 👉 line the delivery mail uses for its own links.
+			if (block.type === "galleryButton") {
+				return `${block.label} :\n👉 ${linkFor(galleryLink, block)}`;
+			}
+
 			if (block.type === "blockquote") {
-				return blocksText(block.content)
+				return blocksText(block.content, galleryLink)
 					.split("\n")
 					.map(line => `> ${line}`.trimEnd())
 					.join("\n");
@@ -299,4 +368,4 @@ function blocksText(blocks) {
 }
 
 /** The plain-text half of a message: paragraphs apart, lists bulleted, quotes with "> ". */
-export const richText = doc => blocksText(doc.content);
+export const richText = (doc, { galleryLink } = {}) => blocksText(doc.content, galleryLink);

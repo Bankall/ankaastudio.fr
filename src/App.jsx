@@ -69,7 +69,9 @@ function App() {
 				<Routes>
 					{/* Galleries and admin sit outside Layout on purpose: no site header,
 					    no footer, nothing competing with the photographs. */}
-					<Route path='/gallery/:slug' element={<GalleryPage />} />
+					{/* One route with an optional segment rather than two: two routes would be
+					    two elements, and a tab switch would remount the gallery. */}
+					<Route path='/gallery/:slug/:setSlug?' element={<GalleryPage />} />
 					{/* Links to the old /g/:slug form are already in client inboxes. */}
 					<Route path='/g/:slug' element={<LegacyGalleryRedirect />} />
 					{/* The archive link mailed to a client. Carries its own credential, so

@@ -193,7 +193,12 @@ async function galleryShell({ request, params }) {
 		// visitor still lands in their gallery.
 		console.error("Site shell unavailable", { slug: params.slug, error: error.message });
 
-		return redirect(`/?route=${encodeURIComponent(`/gallery/${params.slug}`)}`);
+		// The set segment and the query string go along: either may be the tab the
+		// link opens on (?set= in the older delivery mails).
+		const search = request.query.toString();
+		const setPath = params.set ? `/${encodeURIComponent(params.set)}` : "";
+
+		return redirect(`/?route=${encodeURIComponent(`/gallery/${params.slug}${setPath}${search ? `?${search}` : ""}`)}`);
 	}
 
 	let document = shell;
@@ -266,5 +271,8 @@ async function previewImage({ request, params }) {
 
 export const previewRoutes = [
 	["GET", "/gallery/:slug", galleryShell],
+	// A link that opens on one set. Same shell and the same card: the preview is the
+	// gallery's, whichever tab the link lands on.
+	["GET", "/gallery/:slug/:set", galleryShell],
 	["GET", "/api/g/:slug/preview", previewImage]
 ];

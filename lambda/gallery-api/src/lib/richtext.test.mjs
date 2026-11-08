@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { richDoc, richHtml, richText } from "./richtext.mjs";
+import { buttonSetIds, richDoc, richHtml, richText } from "./richtext.mjs";
 
 const parse = (value, options = {}) => richDoc(value, "message", { max: 1000, ...options });
 const text = (value, marks) => ({ type: "text", text: value, ...(marks ? { marks } : {}) });
@@ -140,4 +140,48 @@ test("the last block in a frame has no bottom margin", () => {
 	const parsed = parse(doc(paragraph([text("a")]), paragraph([text("b")])));
 
 	assert.match(richHtml(parsed, { last: "0" }), /margin:0 0 16px;.*>a<\/p><p style="margin:0;/);
+});
+
+const button = attrs => ({ type: "galleryButton", attrs });
+const galleryLink = setId => `https://a.fr/gallery/lea${setId ? `?set=${setId}` : ""}`;
+
+test("gallery button: rendered with the gallery's own link, never one from the tree", () => {
+	const parsed = parse(doc(paragraph([text("Bonjour")]), button({ label: "Voir <tout>", setId: null, href: "https://evil.fr" }), button({ label: "Retouches", setId: "s_ab12" })));
+
+	const html = richHtml(parsed, { galleryLink });
+	assert.ok(html.includes('href="https://a.fr/gallery/lea"'));
+	assert.ok(html.includes('href="https://a.fr/gallery/lea?set=s_ab12"'));
+	assert.ok(html.includes(">Voir &lt;tout&gt;</a>"));
+	assert.ok(!html.includes("evil"));
+
+	assert.equal(richText(parsed, { galleryLink }), "Bonjour\n\nVoir <tout> :\n👉 https://a.fr/gallery/lea\n\nRetouches :\n👉 https://a.fr/gallery/lea?set=s_ab12");
+	assert.deepEqual(buttonSetIds(parsed), ["s_ab12"]);
+});
+
+test("gallery button: a message of nothing but a button is not empty", () => {
+	assert.ok(parse(doc(paragraph([]), button({ label: "Voir" })), { required: true }));
+});
+
+test("gallery button: label required and bounded, set id a short string or null", () => {
+	const refused = [button({ label: "" }), button({ label: "   " }), button({ label: "x".repeat(81) }), button({ label: "x", setId: 3 }), button({ label: "x", setId: "" }), button({ label: "x", setId: "s".repeat(61) })];
+
+	for (const value of refused) {
+		assert.throws(
+			() => parse(doc(value)),
+			error => status(error) === 400,
+			JSON.stringify(value)
+		);
+	}
+});
+
+test("gallery button: not allowed inside a list, allowed in a quote", () => {
+	assert.throws(
+		() => parse(doc({ type: "bulletList", content: [item(button({ label: "x" }))] })),
+		error => status(error) === 400
+	);
+	assert.ok(richHtml(parse(doc({ type: "blockquote", content: [button({ label: "x" })] })), { galleryLink }).includes(">x</a>"));
+});
+
+test("gallery button: rendering without galleryLink is a programming error, not a broken link", () => {
+	assert.throws(() => richHtml(parse(doc(button({ label: "x" })))), /galleryLink/);
 });

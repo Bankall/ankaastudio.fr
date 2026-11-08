@@ -587,6 +587,80 @@
 	color: #9c4a3f;
 }
 
+.rich-editor__button--text {
+	padding: 0 0.6rem;
+	font-size: 0.8rem;
+	letter-spacing: 0.04em;
+}
+
+/* The gallery button as the mail draws it — dark, centred, uppercase — with the tab
+   it opens on underneath, which the mail does not show but the photographer needs. */
+.rich-editor__gallery-button {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.35rem;
+	margin: 0 0 0.9em;
+	padding: 0.4rem 0;
+	border-radius: var(--radius-sm);
+	cursor: pointer;
+	user-select: none;
+}
+
+.rich-editor__gallery-button-label {
+	padding: 0.7rem 1.6rem;
+	border-radius: 4px;
+	background: #353535;
+	color: #fffdfa;
+	font-size: 0.75rem;
+	font-weight: 700;
+	letter-spacing: 0.15em;
+	text-transform: uppercase;
+}
+
+.rich-editor__gallery-button-target {
+	font-size: 0.75rem;
+	color: var(--muted);
+}
+
+.rich-editor__gallery-button.ProseMirror-selectednode {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+
+.rich-editor__button-form {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 0.6rem;
+	padding: 0.6rem;
+	border-bottom: 1px solid var(--line);
+	background: var(--surface);
+}
+
+.rich-editor__button-form label {
+	display: grid;
+	gap: 0.25rem;
+	flex: 1 1 12rem;
+	font-size: 0.8rem;
+	color: var(--muted);
+}
+
+.rich-editor__button-form input,
+.rich-editor__button-form select {
+	min-height: 2.2rem;
+	padding: 0.3rem 0.6rem;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--radius-sm);
+	background: var(--surface-strong);
+	color: var(--text);
+}
+
+.rich-editor__button-form-actions {
+	display: flex;
+	gap: 0.4rem;
+}
+
 .admin-selection__list {
 	margin: 0.4rem 0 0;
 	padding-left: 1.2rem;

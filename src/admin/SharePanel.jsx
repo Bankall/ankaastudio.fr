@@ -267,7 +267,7 @@ export function SharePanel({ gallery, publicUrl, onRefresh }) {
 				    is not something a <label for> can point at. */}
 				<div className='field'>
 					<label id='share-note-label'>{free ? "Contenu du message" : "Message (optionnel)"}</label>
-					<RichTextEditor id='share-note' labelId='share-note-label' value={note.doc} onChange={setNote} disabled={busy} maxLength={noteMax} tall={free} />
+					<RichTextEditor id='share-note' labelId='share-note-label' value={note.doc} onChange={setNote} disabled={busy} maxLength={noteMax} tall={free} sets={sets} />
 				</div>
 
 				<button className='button' type='submit' disabled={busy || unpublished || missingInvoice || missingFreeContent || noteTooLong}>
@@ -332,7 +332,7 @@ export function SharePanel({ gallery, publicUrl, onRefresh }) {
 						))}
 					</ul>
 
-					<p className='admin-hint'>
+					<p className='admin-hint' style={{ display: "none" }}>
 						L’ouverture est détectée par une image invisible dans le message : une messagerie qui bloque les images ne la signalera jamais, et certaines (Apple Mail notamment) la chargent dès la réception. Un
 						indice, pas une preuve.
 					</p>

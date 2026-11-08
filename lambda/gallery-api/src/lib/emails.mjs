@@ -10,6 +10,7 @@
 //
 // `note` and the free message's `body` are the editor's checked tree (richtext.mjs),
 // never a string: they are rendered here, once as HTML and once as plain text.
+// `galleryLink(setId)` is the gallery's address, for the buttons the tree may hold.
 
 import { emailButton, emailButtonGhost, emailLayout, emailNote, emailParagraph, emailQuote, emailValue, escapeHtml } from "./mailer.mjs";
 import { richHtml, richText } from "./richtext.mjs";
@@ -41,14 +42,14 @@ export const DEFAULT_PREVIEWS = {
  * "Your gallery is online": the link, the password if one was just typed, and the
  * date it stops working.
  */
-export function galleryOnlineEmail({ gallery, link, password, note, heading, preview, origin, trackingUrl = null }) {
+export function galleryOnlineEmail({ gallery, link, galleryLink, password, note, heading, preview, origin, trackingUrl = null }) {
 	const text = [
 		`Bonjour ${gallery.clientName || ""}`.trim() + ",",
 		"",
 		`Votre galerie « ${gallery.title} » est en ligne :`,
 		link,
 		...(password ? ["", `Mot de passe : ${password}`] : []),
-		...(note ? ["", richText(note)] : []),
+		...(note ? ["", richText(note, { galleryLink })] : []),
 		...(gallery.expiresAt ? ["", `La galerie reste accessible jusqu'au ${frenchDate(gallery.expiresAt)}.`] : []),
 		"",
 		"À très bientôt,",
@@ -67,7 +68,7 @@ export function galleryOnlineEmail({ gallery, link, password, note, heading, pre
 			inner: [
 				emailParagraph(`Bonjour ${escapeHtml(gallery.clientName || "")},`),
 				emailParagraph(`Vos photos vous attendent dans la galerie <strong>${escapeHtml(gallery.title)}</strong>.`),
-				note ? emailQuote(richHtml(note, { last: "0" })) : "",
+				note ? emailQuote(richHtml(note, { last: "0", galleryLink })) : "",
 				password ? emailValue("Mot de passe", password) : "",
 				emailButton(link, "Voir la galerie"),
 				gallery.expiresAt ? emailNote(`Galerie accessible jusqu'au ${escapeHtml(frenchDate(gallery.expiresAt))}.`) : ""
@@ -89,14 +90,14 @@ export function galleryOnlineEmail({ gallery, link, password, note, heading, pre
  * outlined one for the review, in that order, because only one of them is the reason
  * this email was sent.
  */
-export function deliveryEmail({ gallery, link, note, heading, preview, origin, trackingUrl = null }) {
+export function deliveryEmail({ gallery, link, galleryLink, note, heading, preview, origin, trackingUrl = null }) {
 	const text = [
 		`Bonjour ${gallery.clientName || ""}`.trim() + ",",
 		"",
 		"Bonne nouvelle, vos photos sont prêtes !",
 		"",
 		`👉 ${link}`,
-		...(note ? ["", richText(note)] : []),
+		...(note ? ["", richText(note, { galleryLink })] : []),
 		"",
 		"Vous trouverez également en pièce jointe la facture de votre séance photo.",
 		"",
@@ -127,7 +128,7 @@ export function deliveryEmail({ gallery, link, note, heading, preview, origin, t
 			inner: [
 				emailParagraph(`Bonjour ${escapeHtml(gallery.clientName || "")},`),
 				emailParagraph("Bonne nouvelle, vos photos sont prêtes&nbsp;!"),
-				note ? emailQuote(richHtml(note, { last: "0" })) : "",
+				note ? emailQuote(richHtml(note, { last: "0", galleryLink })) : "",
 				emailButton(link, "Voir mes photos"),
 				emailParagraph("Vous trouverez également en pièce jointe la facture de votre séance photo."),
 				emailParagraph("Encore un grand merci pour votre confiance&nbsp;! J'espère que les photos vous plaisent et que vous garderez un joli souvenir de cette séance."),
@@ -148,17 +149,17 @@ export function deliveryEmail({ gallery, link, note, heading, preview, origin, t
  * come out in the card the way the panel showed them. No preview given means the
  * inbox shows the heading, as emailLayout does by default.
  */
-export function freeEmail({ heading, preview, body, origin, trackingUrl = null }) {
+export function freeEmail({ heading, preview, body, galleryLink, origin, trackingUrl = null }) {
 	return {
 		subject: heading,
-		text: [richText(body), "", "À très bientôt,", "Ankaa Studio"].join("\n"),
+		text: [richText(body, { galleryLink }), "", "À très bientôt,", "Ankaa Studio"].join("\n"),
 		html: emailLayout({
 			label: "",
 			heading,
 			preview: preview || heading,
 			origin,
 			trackingUrl,
-			inner: richHtml(body)
+			inner: richHtml(body, { galleryLink })
 		})
 	};
 }

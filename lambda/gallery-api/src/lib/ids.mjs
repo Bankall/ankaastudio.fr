@@ -28,8 +28,13 @@ export const shareId = () => `m_${shortId(20)}`;
 
 // Slugs land in URLs and in the SPA fallback rule, which folds any path whose
 // last segment has no dot onto index.html — so dots must not survive here.
-export function slugify(input) {
-	const base = String(input || "")
+//
+// slugBase() is the deterministic part, and may come back empty (a title of
+// emoji); slugify() fills that with a random id. A set's slug uses the first and
+// its own fallback, because it is re-derived for older records and has to come
+// out the same every time.
+export function slugBase(input) {
+	return String(input || "")
 		.normalize("NFD")
 		.replace(/[\u0300-\u036f]/g, "")
 		.toLowerCase()
@@ -37,8 +42,10 @@ export function slugify(input) {
 		.replace(/^-+|-+$/g, "")
 		.slice(0, 60)
 		.replace(/-+$/g, "");
+}
 
-	return base || shortId(8);
+export function slugify(input) {
+	return slugBase(input) || shortId(8);
 }
 
 export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/;
