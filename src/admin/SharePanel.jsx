@@ -1,15 +1,17 @@
 import { useRef, useState } from "react";
 import { adminApi, uploadToS3 } from "../utils/galleryApi.js";
-import { SHARE_TEMPLATE_LABELS } from "../utils/shareTemplates.js";
+import { SHARE_TEMPLATE_LABELS, shareDefaults } from "../utils/shareTemplates.js";
+import { RichTextEditor } from "./RichTextEditor.jsx";
 
 /**
- * The two messages the client gets, in the order they are sent: the gallery going
- * online, and the retouched set handed over with its invoice.
+ * The messages the client gets: the gallery going online, the retouched set handed
+ * over with its invoice, and a free one written whole here.
  *
- * One form for both, switched by the select at the top, because almost all of it is
- * shared — the recipient, the note, and the fact that neither can be sent before the
- * gallery is published. What differs is what each message needs to carry, and those
- * fields appear with the template that uses them rather than sitting greyed out.
+ * One form for all, switched by the select at the top, because almost all of it is
+ * shared — the recipient, the heading and preview line, the note, and the fact that
+ * none can be sent before the gallery is published. What differs is what each
+ * message needs to carry, and those fields appear with the template that uses them
+ * rather than sitting greyed out.
  */
 const TEMPLATES = [
 	{
@@ -21,8 +23,18 @@ const TEMPLATES = [
 		id: "delivery",
 		label: SHARE_TEMPLATE_LABELS.delivery,
 		hint: "Le lien vers la catégorie retouchée, la facture en pièce jointe et la demande d’avis Google."
+	},
+	{
+		id: "free",
+		label: SHARE_TEMPLATE_LABELS.free,
+		hint: "Votre titre et votre texte dans la mise en page du studio, sans lien ni pièce jointe. Le titre sert aussi d’objet."
 	}
 ];
+
+// Characters of text, as the API counts them (MAX_NOTE / MAX_FREE_BODY in
+// routes/admin.mjs): an aside in the first two messages, the whole body of the third.
+const MAX_NOTE = 2000;
+const MAX_FREE_BODY = 10000;
 
 const formatDate = value => new Date(value).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 const formatMoment = value => new Date(value).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
@@ -34,12 +46,18 @@ const formatMoment = value => new Date(value).toLocaleString("fr-FR", { dateStyl
  */
 export function SharePanel({ gallery, publicUrl, onRefresh }) {
 	const [template, setTemplate] = useState("online");
+	// Start on the template's own text and go back to it on a switch: an edit is
+	// about one message, and carrying it to another would put the wrong title on it.
+	const [heading, setHeading] = useState(() => shareDefaults("online", gallery).heading);
+	const [preview, setPreview] = useState(() => shareDefaults("online", gallery).preview);
 	const [to, setTo] = useState(gallery.clientEmail ?? "");
 	// Typed here rather than read from the record on purpose — it is stored only as a
 	// hash, so this is the one moment it can be included in the email, and only
 	// because the photographer just typed it.
 	const [password, setPassword] = useState("");
-	const [note, setNote] = useState("");
+	// The editor's JSON tree, which is what is sent, and its text, which is what is
+	// counted and checked for emptiness — an emptied editor still holds a paragraph.
+	const [note, setNote] = useState({ doc: null, text: "" });
 	// Which tab the delivery link opens on. Starts on the one the last delivery used:
 	// a second message about the same shoot is nearly always about the same set.
 	const [setId, setSetId] = useState(gallery.delivery?.setId ?? "");
@@ -68,6 +86,11 @@ export function SharePanel({ gallery, publicUrl, onRefresh }) {
 	const busy = status === "sending" || status === "uploading";
 	const unpublished = gallery.status !== "published";
 	const missingInvoice = template === "delivery" && !invoice && !storedInvoice;
+	const free = template === "free";
+	const hasNote = note.text.trim() !== "";
+	const missingFreeContent = free && (!heading.trim() || !hasNote);
+	const noteMax = free ? MAX_FREE_BODY : MAX_NOTE;
+	const noteTooLong = note.text.length > noteMax;
 	// The record's list, newest first, with this session's sends ahead of it until the
 	// record has them too — matched by id, so a refresh does not list one twice.
 	const recorded = gallery.shares ?? [];
@@ -92,6 +115,13 @@ export function SharePanel({ gallery, publicUrl, onRefresh }) {
 		return upload.key;
 	};
 
+	const handleTemplateChange = next => {
+		const defaults = shareDefaults(next, gallery);
+		setTemplate(next);
+		setHeading(defaults.heading);
+		setPreview(defaults.preview);
+	};
+
 	const handleSubmit = async event => {
 		event.preventDefault();
 		setStatus("sending");
@@ -109,8 +139,12 @@ export function SharePanel({ gallery, publicUrl, onRefresh }) {
 			const result = await adminApi.share(gallery.id, {
 				template,
 				to,
-				...(template === "online" ? { password: password || undefined } : { setId: setId || undefined, invoiceKey }),
-				note: note || undefined
+				heading: heading.trim() || undefined,
+				preview: preview.trim() || undefined,
+				...(template === "online" ? { password: password || undefined }
+				: template === "delivery" ? { setId: setId || undefined, invoiceKey }
+				: {}),
+				note: hasNote ? note.doc : undefined
 			});
 
 			setStatus("sent");
@@ -158,7 +192,7 @@ export function SharePanel({ gallery, publicUrl, onRefresh }) {
 
 				<div className='field'>
 					<label htmlFor='share-template'>Message</label>
-					<select id='share-template' value={template} disabled={busy} onChange={event => setTemplate(event.target.value)}>
+					<select id='share-template' value={template} disabled={busy} onChange={event => handleTemplateChange(event.target.value)}>
 						{TEMPLATES.map(item => (
 							<option key={item.id} value={item.id}>
 								{item.label}
@@ -175,12 +209,24 @@ export function SharePanel({ gallery, publicUrl, onRefresh }) {
 					<input id='share-to' type='email' required value={to} onChange={event => setTo(event.target.value)} placeholder='client@exemple.fr' />
 				</div>
 
+				<div className='field'>
+					<label htmlFor='share-heading'>Titre{free ? " (et objet)" : ""}</label>
+					<input id='share-heading' type='text' required={free} maxLength={200} value={heading} onChange={event => setHeading(event.target.value)} />
+				</div>
+
+				<div className='field'>
+					<label htmlFor='share-preview'>Aperçu (optionnel)</label>
+					<input id='share-preview' type='text' maxLength={300} value={preview} onChange={event => setPreview(event.target.value)} placeholder={free ? "Laisser vide pour reprendre le titre" : ""} />
+					<p className='admin-hint'>La ligne que la messagerie affiche à côté de l’objet.</p>
+				</div>
+
 				{template === "online" ?
 					<div className='field'>
 						<label htmlFor='share-password'>Mot de passe à rappeler (optionnel)</label>
 						<input id='share-password' type='text' value={password} onChange={event => setPassword(event.target.value)} placeholder='Laisser vide pour ne pas l’inclure' />
 					</div>
-				:	<>
+				: template === "delivery" ?
+					<>
 						{/* Only when there is a choice to make: a gallery that was never split
 						    into tabs is delivered whole, and the link goes to all of it. */}
 						{sets.length > 0 ?
@@ -200,14 +246,7 @@ export function SharePanel({ gallery, publicUrl, onRefresh }) {
 
 						<div className='field'>
 							<label htmlFor='share-invoice'>Facture (PDF)</label>
-							<input
-								ref={invoiceRef}
-								id='share-invoice'
-								type='file'
-								accept='application/pdf,.pdf'
-								disabled={busy}
-								onChange={event => setInvoice(event.target.files?.[0] ?? null)}
-							/>
+							<input ref={invoiceRef} id='share-invoice' type='file' accept='application/pdf,.pdf' disabled={busy} onChange={event => setInvoice(event.target.files?.[0] ?? null)} />
 							{/* Said only when no new file is chosen: with one picked, that is what
 							    goes out, and naming the old one beside it reads as a choice. */}
 							{storedInvoice && !invoice ?
@@ -221,20 +260,25 @@ export function SharePanel({ gallery, publicUrl, onRefresh }) {
 							:	null}
 						</div>
 					</>
-				}
+				:	null}
 
+				{/* One editor for every template, so a note half-written before a switch
+				    of template is still there after it. Labelled by id: a contenteditable
+				    is not something a <label for> can point at. */}
 				<div className='field'>
-					<label htmlFor='share-note'>Message (optionnel)</label>
-					<textarea id='share-note' rows={3} maxLength={2000} value={note} onChange={event => setNote(event.target.value)} />
+					<label id='share-note-label'>{free ? "Contenu du message" : "Message (optionnel)"}</label>
+					<RichTextEditor id='share-note' labelId='share-note-label' value={note.doc} onChange={setNote} disabled={busy} maxLength={noteMax} tall={free} />
 				</div>
 
-				<button className='button' type='submit' disabled={busy || unpublished || missingInvoice}>
+				<button className='button' type='submit' disabled={busy || unpublished || missingInvoice || missingFreeContent || noteTooLong}>
 					{status === "uploading" ?
 						"Envoi de la facture…"
 					: status === "sending" ?
 						"Envoi…"
 					: template === "delivery" ?
 						"Envoyer les retouches"
+					: free ?
+						"Envoyer le message"
 					:	"Envoyer le lien"}
 				</button>
 
@@ -244,6 +288,10 @@ export function SharePanel({ gallery, publicUrl, onRefresh }) {
 
 				{missingInvoice ?
 					<p className='admin-hint'>Choisissez la facture à joindre.</p>
+				:	null}
+
+				{noteTooLong ?
+					<p className='admin-hint'>Le message dépasse {noteMax} caractères.</p>
 				:	null}
 
 				{message ?
@@ -285,8 +333,8 @@ export function SharePanel({ gallery, publicUrl, onRefresh }) {
 					</ul>
 
 					<p className='admin-hint'>
-						L’ouverture est détectée par une image invisible dans le message : une messagerie qui bloque les images ne la signalera jamais, et certaines (Apple Mail
-						notamment) la chargent dès la réception. Un indice, pas une preuve.
+						L’ouverture est détectée par une image invisible dans le message : une messagerie qui bloque les images ne la signalera jamais, et certaines (Apple Mail notamment) la chargent dès la réception. Un
+						indice, pas une preuve.
 					</p>
 				</div>
 			:	null}

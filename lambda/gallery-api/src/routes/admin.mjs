@@ -6,12 +6,13 @@ import { freezeOriginals, originalsState, purgeDerivatives, thawOriginals } from
 import { clearAdminSession, issueAdminSession, issueSignedCookies, penalise, requireAdmin, SIGNED_COOKIE_TTL_SECONDS } from "../lib/auth.mjs";
 import { signedUrl } from "../lib/cfsign.mjs";
 import { markDownloadsSeen, readDownloadLog } from "../lib/downloads.mjs";
-import { deliveryEmail, galleryOnlineEmail } from "../lib/emails.mjs";
+import { deliveryEmail, freeEmail, galleryOnlineEmail } from "../lib/emails.mjs";
 import { badRequest, conflict, json, noContent, notFound, publicOrigin } from "../lib/http.mjs";
 import { galleryId, photoId, setId as newSetId, shareId, SLUG_PATTERN, slugify } from "../lib/ids.mjs";
 import { sendEmail } from "../lib/mailer.mjs";
 import { hashPassword, verifyPassword } from "../lib/passwords.mjs";
 import { invokeProcessor } from "../lib/processor.mjs";
+import { richDoc } from "../lib/richtext.mjs";
 import { getSecrets } from "../lib/secrets.mjs";
 import { deleteKeys, deletePrefix, getBytes, getJson, listKeys, mapWithLimit, objectExists, putJson, s3, updateJson } from "../lib/store.mjs";
 import { bool, email, isoDate, oneOf, str, stringArray } from "../lib/validate.mjs";
@@ -179,10 +180,7 @@ async function warmCoverDerivatives(gallery) {
 	// preview is already the clean image — clientProjection says as much by withholding
 	// coverImage — so that copy would be waste. The card's JPEG is wanted either way:
 	// the crawlers it exists for cannot read the WebP the preview is.
-	const wanted = [
-		...(photoWatermark(gallery, cover) === "none" ? [] : [["cover", coverImageKey(gallery.id, cover.pid, cover.rev)]]),
-		["share", sharePreviewKey(gallery.id, cover.pid, cover.rev)]
-	];
+	const wanted = [...(photoWatermark(gallery, cover) === "none" ? [] : [["cover", coverImageKey(gallery.id, cover.pid, cover.rev)]]), ["share", sharePreviewKey(gallery.id, cover.pid, cover.rev)]];
 
 	for (const [variant, key] of wanted) {
 		try {
@@ -722,9 +720,7 @@ async function reconcile({ request, params }) {
 	// Anything without an explicit position goes to the end, ordered the way a
 	// photographer's export numbering reads.
 	const positioned = all.filter(photo => photo.sortIndex !== null).sort((a, b) => a.sortIndex - b.sortIndex);
-	const fresh = all
-		.filter(photo => photo.sortIndex === null)
-		.sort((a, b) => String(a.originalName).localeCompare(String(b.originalName), "fr", { numeric: true }));
+	const fresh = all.filter(photo => photo.sortIndex === null).sort((a, b) => String(a.originalName).localeCompare(String(b.originalName), "fr", { numeric: true }));
 
 	gallery.photos = [...positioned, ...fresh].map((photo, index) => ({ ...photo, sortIndex: index }));
 
@@ -798,11 +794,7 @@ async function reconcile({ request, params }) {
 
 	// Refreshed on every poll, so a long editing session never watches its own
 	// tiles turn into 403s when the 12-hour cookies lapse.
-	return json(
-		200,
-		{ gallery: adminProjection(gallery), requeued: requeue.length },
-		{ cookies: await issueSignedCookies(gallery.id, origin) }
-	);
+	return json(200, { gallery: adminProjection(gallery), requeued: requeue.length }, { cookies: await issueSignedCookies(gallery.id, origin) });
 }
 
 // --- photo edits -----------------------------------------------------------
@@ -1060,9 +1052,7 @@ async function reorderSets({ request, params }) {
 
 	// Anything the caller left out keeps its relative place at the end rather than
 	// disappearing: a set created in another tab must not be dropped by a stale order.
-	gallery.sets = (gallery.sets ?? [])
-		.slice()
-		.sort((a, b) => (position.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (position.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+	gallery.sets = (gallery.sets ?? []).slice().sort((a, b) => (position.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (position.get(b.id) ?? Number.MAX_SAFE_INTEGER));
 
 	await saveGallery(gallery, etag);
 
@@ -1207,11 +1197,16 @@ async function reprocess({ request, params }) {
 
 // --- sharing ---------------------------------------------------------------
 
-// The two messages the photographer sends by hand, at the two moments a client
-// hears from the studio: `online` when the gallery goes up, and `delivery` when the
-// retouched set is handed over with its invoice. One route for both — same
-// recipient, same note, same "is it published yet" — and the copy in lib/emails.mjs.
-const SHARE_TEMPLATES = ["online", "delivery"];
+// The messages the photographer sends by hand: `online` when the gallery goes up,
+// `delivery` when the retouched set is handed over with its invoice, and `free` for
+// anything else, written whole in the panel. One route for all three — same
+// recipient, same "is it published yet" — and the copy in lib/emails.mjs.
+const SHARE_TEMPLATES = ["online", "delivery", "free"];
+
+// The note is an aside in the first two and the whole message in the third.
+// Counted in characters of text, whatever the formatting around them.
+const MAX_NOTE = 2000;
+const MAX_FREE_BODY = 10000;
 
 async function share({ request, params }) {
 	await requireAdmin(request);
@@ -1221,7 +1216,13 @@ async function share({ request, params }) {
 	// before the second template existed means the first.
 	const template = oneOf(request.body?.template, "modèle", SHARE_TEMPLATES) ?? "online";
 	const recipient = email(request.body?.to ?? gallery.clientEmail, "destinataire", { required: true });
-	const note = str(request.body?.note, "message", { max: 2000 });
+	const free = template === "free";
+	// The editor's JSON tree, checked and rebuilt from the node types it offers.
+	const note = richDoc(request.body?.note, "message", { max: free ? MAX_FREE_BODY : MAX_NOTE, required: free });
+	// Both editable in the panel. Empty means "the template's own", which
+	// lib/emails.mjs supplies — except for `free`, which has none to fall back on.
+	const heading = str(request.body?.heading, "titre", { max: 200, required: free, allowEmpty: !free }) || undefined;
+	const preview = str(request.body?.preview, "aperçu", { max: 300 }) || undefined;
 	const origin = publicOrigin(request);
 
 	if (gallery.status !== "published") {
@@ -1237,9 +1238,9 @@ async function share({ request, params }) {
 	const trackingUrl = `${origin}/api/open/${gallery.id}/${sent.id}`;
 
 	const delivery =
-		template === "delivery" ?
-			await sendDelivery({ gallery, request, recipient, note, origin, trackingUrl })
-		:	await sendOnline({ gallery, request, recipient, note, origin, trackingUrl });
+		template === "delivery" ? await sendDelivery({ gallery, request, recipient, note, heading, preview, origin, trackingUrl })
+		: free ? await sendFree({ recipient, body: note, heading, preview, origin, trackingUrl })
+		: await sendOnline({ gallery, request, recipient, note, heading, preview, origin, trackingUrl });
 
 	// Written only now: a record saying a message went out when the send threw would
 	// offer the panel a re-send of something the client never got, and wait for an
@@ -1268,7 +1269,7 @@ async function share({ request, params }) {
 }
 
 /** The first message: the gallery is up, here is the link. Nothing to record beyond the send. */
-async function sendOnline({ gallery, request, recipient, note, origin, trackingUrl }) {
+async function sendOnline({ gallery, request, recipient, note, heading, preview, origin, trackingUrl }) {
 	await sendEmail({
 		to: recipient,
 		...galleryOnlineEmail({
@@ -1278,10 +1279,19 @@ async function sendOnline({ gallery, request, recipient, note, origin, trackingU
 			// hash, so this is the one moment it can be put in an email.
 			password: str(request.body?.password, "mot de passe", { max: 200 }),
 			note,
+			heading,
+			preview,
 			origin,
 			trackingUrl
 		})
 	});
+
+	return null;
+}
+
+/** The free-form message: the photographer's heading and text in the studio's layout, nothing else. */
+async function sendFree({ recipient, body, heading, preview, origin, trackingUrl }) {
+	await sendEmail({ to: recipient, ...freeEmail({ heading, preview, body, origin, trackingUrl }) });
 
 	return null;
 }
@@ -1297,7 +1307,7 @@ async function sendOnline({ gallery, request, recipient, note, origin, trackingU
  * Answers with what the record keeps of a delivery — the invoice that went and the
  * set it opened on — for share() to write once the message is away.
  */
-async function sendDelivery({ gallery, request, recipient, note, origin, trackingUrl }) {
+async function sendDelivery({ gallery, request, recipient, note, heading, preview, origin, trackingUrl }) {
 	const setId = str(request.body?.setId, "catégorie", { max: 60 });
 	const set = setId ? (gallery.sets ?? []).find(candidate => candidate.id === setId) : null;
 
@@ -1319,6 +1329,8 @@ async function sendDelivery({ gallery, request, recipient, note, origin, trackin
 			// does not name which one, it opens on it.
 			link: `${origin}/gallery/${gallery.slug}${set ? `?set=${encodeURIComponent(set.id)}` : ""}`,
 			note,
+			heading,
+			preview,
 			origin,
 			trackingUrl
 		}),

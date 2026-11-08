@@ -152,9 +152,12 @@ export const adminApi = {
 	// overwrites — and it stays in the bucket so a re-send needs no second upload.
 	requestInvoiceUpload: (gid, file) => request(`/api/admin/galleries/${gid}/invoice`, { method: "POST", body: { name: file.name, size: file.size } }),
 
-	// payload: { template: "online" | "delivery", to, note?, password? (online),
+	// payload: { template: "online" | "delivery" | "free", to, note? (the editor's
+	// Tiptap JSON; required for free), heading? (required for free), preview?,
+	// password? (online),
 	// setId? + invoiceKey? (delivery) }. Omitting invoiceKey on a delivery re-sends
-	// the invoice the last one went out with.
+	// the invoice the last one went out with; an empty heading or preview means the
+	// template's own.
 	share: (gid, payload) => request(`/api/admin/galleries/${gid}/share`, { method: "POST", body: payload }),
 	selection: gid => request(`/api/admin/galleries/${gid}/selection`),
 

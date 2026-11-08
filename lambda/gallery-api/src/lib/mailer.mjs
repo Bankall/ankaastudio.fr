@@ -92,21 +92,44 @@ export const emailLayout = ({ label, heading, preview = heading, inner, origin =
 ${trackingUrl ? emailPixel(trackingUrl) : ""}
 </body></html>`;
 
-/** Body copy. Styled per block: a <td> hands nothing down to its children in Outlook. */
-export const emailParagraph = html => `<p style="margin:0 0 16px;font-family:${SANS};font-size:16px;line-height:26px;color:${BODY};">${html}</p>`;
+/**
+ * Body copy. Styled per block: a <td> hands nothing down to its children in Outlook.
+ *
+ * `align` and `margin` are for the photographer's own text (richtext.mjs): the
+ * alignment chosen in the editor, and no bottom margin on the last block inside a
+ * frame, which would otherwise leave the accent rule running past the words.
+ */
+export const emailParagraph = (html, { align = null, margin = "0 0 16px" } = {}) =>
+	`<p style="margin:${margin};font-family:${SANS};font-size:16px;line-height:26px;color:${BODY};${align ? `text-align:${align};` : ""}">${html}</p>`;
+
+/**
+ * A bulleted or numbered list. The indent is set on the list itself rather than left
+ * to the client, which ranges from none (some webmails) to 40px (Outlook).
+ */
+export const emailList = (items, { ordered = false, start = 1, margin = "0 0 16px" } = {}) => {
+	const tag = ordered ? "ol" : "ul";
+	const startAttr = ordered && start !== 1 ? ` start="${start}"` : "";
+
+	return `<${tag}${startAttr} style="margin:${margin};padding:0 0 0 24px;font-family:${SANS};font-size:16px;line-height:26px;color:${BODY};">${items.map(item => `<li style="margin:0 0 4px;">${item}</li>`).join("")}</${tag}>`;
+};
+
+/** A link inside the photographer's text: underlined in the body colour rather than the client's blue. */
+export const emailLink = (href, html) => `<a href="${escapeHtml(href)}" target="_blank" style="color:${TEXT};text-decoration:underline;">${html}</a>`;
 
 /** The aside that follows the main copy — validity, expiry, the small print. */
 export const emailNote = html => `<p style="margin:16px 0 0;font-family:${SANS};font-size:13px;line-height:20px;color:${MUTED};">${html}</p>`;
 
 /**
- * The photographer's own words, set off by an accent rule.
+ * Words set off by an accent rule: the photographer's note in the two studio
+ * messages, and a quote block inside any rich text.
  *
- * Line breaks become <br>: the clients that drop `white-space` would otherwise
- * run a hand-typed note into one paragraph.
+ * Takes HTML already rendered by richtext.mjs, which escapes the text and styles
+ * every block itself. No italic forced on it any more: the editor offers italic,
+ * and a frame that slanted everything would undo the choice.
  */
-export const emailQuote = text =>
-	`<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 16px;"><tr>
-		<td style="padding:2px 0 2px 16px;border-left:2px solid ${ACCENT};font-family:${SANS};font-size:15px;line-height:24px;color:${BODY};font-style:italic;">${escapeHtml(text).replace(/\r?\n/g, "<br>")}</td>
+export const emailQuote = (html, { margin = "0 0 16px" } = {}) =>
+	`<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:${margin};"><tr>
+		<td style="padding:2px 0 2px 16px;border-left:2px solid ${ACCENT};font-family:${SANS};font-size:16px;line-height:26px;color:${BODY};">${html}</td>
 	</tr></table>`;
 
 /** A value the client has to read off and retype, so it gets its own frame. */
