@@ -34,6 +34,10 @@ const SITE_URL = "https://ankaastudio.fr";
 // before it is read — by the reader and by the filter in front of them.
 const SENDER_NAME = "Ankaa Studio";
 
+// Where a client's reply lands. The footer of every message says "just reply",
+// and the sending address is not an inbox anyone reads.
+export const REPLY_TO = "sophie.marache@gmail.com";
+
 /**
  * The open pixel: a 1×1 image whose URL names the message, so that loading it is
  * what tells the share panel the message was opened.
@@ -226,6 +230,8 @@ function rawMessage({ from, to, subject, text, html, attachments }) {
 	const lines = [
 		`From: ${from}`,
 		`To: ${to}`,
+		// SES ignores ReplyToAddresses on raw content: the header has to be in the bytes.
+		`Reply-To: ${REPLY_TO}`,
 		`Subject: ${encodeHeader(subject)}`,
 		// SES stamps a Simple message with the date itself; a raw one goes out as
 		// given, and a message with no Date header is one of the oldest spam-filter
@@ -282,6 +288,7 @@ export async function sendEmail({ to, subject, text, html, attachments = [] }) {
 		new SendEmailCommand({
 			FromEmailAddress: from,
 			Destination: { ToAddresses: [to] },
+			ReplyToAddresses: [REPLY_TO],
 			Content:
 				attachments.length > 0 ?
 					{ Raw: { Data: rawMessage({ from, to, subject, text, html, attachments }) } }
