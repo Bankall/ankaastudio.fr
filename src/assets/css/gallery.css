@@ -265,14 +265,31 @@
 /* Sets and favourites, as tabs. Scrolls sideways rather than wrapping: eight sets
    must not push the photographs down by three rows on a phone. */
 .gallery-tabs {
+	--tabs-fade: 3rem;
 	display: flex;
 	gap: 0.35rem;
+	max-width: 100%;
+	min-width: 0;
 	overflow-x: auto;
 	scrollbar-width: none;
 }
 
 .gallery-tabs::-webkit-scrollbar {
 	display: none;
+}
+
+/* The scrollbar is hidden, so a row running past the screen fades out on the side
+   that still has tabs to show (SetTabs sets the classes from the scroll position). */
+.gallery-tabs.is-clipped-start {
+	mask-image: linear-gradient(to right, transparent, #000 var(--tabs-fade));
+}
+
+.gallery-tabs.is-clipped-end {
+	mask-image: linear-gradient(to left, transparent, #000 var(--tabs-fade));
+}
+
+.gallery-tabs.is-clipped-start.is-clipped-end {
+	mask-image: linear-gradient(to right, transparent, #000 var(--tabs-fade), #000 calc(100% - var(--tabs-fade)), transparent);
 }
 
 .gallery-tabs__tab {
@@ -820,9 +837,12 @@
 		padding: 4rem 1.25rem 6rem;
 	}
 
-	/* Stacked, and the download buttons keep the full width they need. */
+	/* Stacked, and the download buttons keep the full width they need. Single-line:
+	   a wrapping column sizes its line to the widest item's content, so the tabs
+	   would widen the bar past the screen instead of scrolling inside it. */
 	.gallery-view__bar {
 		flex-direction: column;
+		flex-wrap: nowrap;
 		align-items: stretch;
 	}
 

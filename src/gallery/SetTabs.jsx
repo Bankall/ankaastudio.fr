@@ -1,5 +1,6 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { HeartIcon } from "./HeartIcon.jsx";
+import { scrollEdges } from "./scrollEdges.js";
 
 /**
  * The gallery's tabs: its sets, and the visitor's favourites among them.
@@ -24,6 +25,35 @@ import { HeartIcon } from "./HeartIcon.jsx";
  */
 export function SetTabs({ tabs, activeId, panelId, sectionId, onSelect }) {
 	const listRef = useRef(null);
+	const [clipped, setClipped] = useState({ start: false, end: false });
+
+	// On a phone the row scrolls sideways with its scrollbar hidden, so nothing says
+	// there are more sets past the edge: the clipped ends fade out instead. Measured
+	// again on every scroll and resize, and whenever the tabs change — a count going
+	// up can be what pushes the row past the screen.
+	useEffect(() => {
+		const list = listRef.current;
+
+		if (!list) {
+			return undefined;
+		}
+
+		const measure = () => {
+			const next = scrollEdges(list);
+
+			setClipped(previous => (previous.start === next.start && previous.end === next.end ? previous : next));
+		};
+		const observer = new ResizeObserver(measure);
+
+		measure();
+		observer.observe(list);
+		list.addEventListener("scroll", measure, { passive: true });
+
+		return () => {
+			observer.disconnect();
+			list.removeEventListener("scroll", measure);
+		};
+	}, [tabs]);
 
 	if (tabs.length < 2) {
 		return null;
@@ -73,7 +103,12 @@ export function SetTabs({ tabs, activeId, panelId, sectionId, onSelect }) {
 	};
 
 	return (
-		<div className='gallery-tabs' role='tablist' aria-label='Ensembles de la galerie et favoris' ref={listRef} onKeyDown={handleKeyDown}>
+		<div
+			className={`gallery-tabs${clipped.start ? " is-clipped-start" : ""}${clipped.end ? " is-clipped-end" : ""}`}
+			role='tablist'
+			aria-label='Ensembles de la galerie et favoris'
+			ref={listRef}
+			onKeyDown={handleKeyDown}>
 			{tabs.map(tab => {
 				const selected = tab.id === activeId;
 
